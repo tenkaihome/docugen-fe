@@ -130,9 +130,23 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
                         {/* Download button */}
                         <button
                           type="button"
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            window.open(`${API_BASE_URL}/api/templates/${template.id}/download`, '_blank');
+                            try {
+                              const res = await fetch(`${API_BASE_URL}/api/templates/${template.id}/download`);
+                              if (!res.ok) throw new Error('Tải mẫu thất bại');
+                              const blob = await res.blob();
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = `${template.name}.docx`;
+                              document.body.appendChild(a);
+                              a.click();
+                              document.body.removeChild(a);
+                              URL.revokeObjectURL(url);
+                            } catch (err) {
+                              alert('Không thể tải mẫu. Vui lòng thử lại.');
+                            }
                           }}
                           className={`
                             p-1.5 rounded-lg transition-colors
