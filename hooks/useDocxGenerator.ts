@@ -7,82 +7,102 @@ import PizZip from 'pizzip';
 export const useDocxGenerator = (sections: ExcelSection[], selectedSections: string[]) => {
   const [templates, setTemplates] = useState<EnterpriseTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('custom');
-  const [customTemplateFiles, setCustomTemplateFiles] = useState<File[]>([]);
   
   const [processState, setProcessState] = useState<ProcessState>('IDLE');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
   // Load active templates
+  const loadTemplates = useCallback(async () => {
+    try {
+      const data = await apiClient.getEnterpriseTemplates();
+      const filtered = data.filter((t) => t.id !== 'phu-minh' && t.id !== 'xuan-loc-tho');
+      setTemplates(filtered);
+    } catch (err) {
+      console.error('Failed to load templates', err);
+    }
+  }, []);
+
   useEffect(() => {
-    const loadTemplates = async () => {
-      try {
-        const data = await apiClient.getEnterpriseTemplates();
-        const filtered = data.filter((t) => t.id !== 'phu-minh' && t.id !== 'xuan-loc-tho');
-        setTemplates(filtered);
-        if (filtered.length > 0) {
-          setSelectedTemplateId(filtered[0].id);
-        } else {
-          setSelectedTemplateId('custom');
-        }
-      } catch (err) {
-        console.error('Failed to load templates', err);
+    loadTemplates();
+  }, [loadTemplates]);
+
+  // Upload template to Firebase
+  const uploadCustomTemplate = useCallback(async (file: File) => {
+    setIsProcessing(true);
+    try {
+      await apiClient.uploadCustomTemplate(file);
+      await loadTemplates();
+    } catch (err: any) {
+      console.error(err);
+      alert(`Lỗi tải lên mẫu Word lên Firebase:\n${err.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [loadTemplates]);
+
+  // Delete template from Firebase
+  const removeCustomTemplate = useCallback(async (templateId: string) => {
+    setIsProcessing(true);
+    try {
+      await apiClient.deleteTemplate(templateId);
+      await loadTemplates();
+      if (selectedTemplateId === templateId) {
         setSelectedTemplateId('custom');
       }
-    };
-    loadTemplates();
-  }, []);
+    } catch (err: any) {
+      console.error(err);
+      alert(`Lỗi xóa mẫu Word khỏi Firebase:\n${err.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [selectedTemplateId, loadTemplates]);
 
   // Helper to normalize Vietnamese strings for fuzzy template matching
   const normalizeString = (str: string): string => {
     return str
       .toLowerCase()
       .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '') // remove Vietnamese accents
+      .replace(/[\u0300-\u036f]/g, '')
       .replace(/[đĐ]/g, 'd')
-      .replace(/[^a-z0-9]/g, '') // remove spaces & special characters
-      .trim();
+      .replace(/[^a-z0-9]/g, '');
   };
 
   /**
-   * Fuzzy matches section's companyName to one of the custom uploaded template files.
+   * Matches a parsed section to a template from Firebase
    */
-  const getTemplateForSection = useCallback((section: ExcelSection): (EnterpriseTemplate & { customFile?: File }) | null => {
+  const getTemplateForSection = useCallback((section: ExcelSection): EnterpriseTemplate | null => {
+    // 1. If a specific template is selected in the dropdown
+    if (selectedTemplateId && selectedTemplateId !== 'custom') {
+      const selectedTpl = templates.find((t) => t.id === selectedTemplateId);
+      if (selectedTpl) return selectedTpl;
+    }
+
+    // 2. If auto-matching mode is selected (selectedTemplateId === 'custom')
     if (selectedTemplateId === 'custom') {
-      if (customTemplateFiles.length === 0) {
+      if (templates.length === 0) {
         return null;
       }
 
       const normalizedCompanyName = normalizeString(section.companyName);
 
-      // Look for a fuzzy filename match
-      const matchedFile = customTemplateFiles.find((file) => {
-        const fileNameNoExt = file.name.replace(/\.docx$/i, '');
-        const normalizedFileName = normalizeString(fileNameNoExt);
+      // Look for fuzzy name match in loaded database templates
+      const matched = templates.find((t) => {
+        const normalizedTemplateName = normalizeString(t.name);
         return (
-          normalizedCompanyName.includes(normalizedFileName) || 
-          normalizedFileName.includes(normalizedCompanyName)
+          normalizedCompanyName.includes(normalizedTemplateName) || 
+          normalizedTemplateName.includes(normalizedCompanyName)
         );
       });
 
-      if (!matchedFile) {
-        return null; // Return null if no template matches
-      }
-
-      return {
-        id: `custom-${matchedFile.name}`,
-        name: `Custom: ${matchedFile.name}`,
-        fileUrl: '',
-        mappingSchema: [],
-        customFile: matchedFile,
-      };
+      if (matched) return matched;
     }
 
-    // Default enterprise template matching
-    const matched = templates.find((t) => t.id === section.companyId);
-    if (matched) return matched;
-    
-    return templates.find((t) => t.id === selectedTemplateId) || null;
-  }, [selectedTemplateId, templates, customTemplateFiles]);
+    // 3. Fallback matching by companyId if any exists in templates
+    const matchedById = templates.find((t) => t.id === section.companyId);
+    if (matchedById) return matchedById;
+
+    return null;
+  }, [selectedTemplateId, templates]);
 
   /**
    * Generates document for a single Excel row (creates a 1-page document with just that item).
@@ -103,8 +123,7 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
         template.id, 
         [rowData], 
         section.id, 
-        section, 
-        template.customFile
+        section
       );
       saveAs(blob, docName);
     } catch (err: any) {
@@ -129,8 +148,7 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
         template.id, 
         section.items, 
         section.id, 
-        section, 
-        template.customFile
+        section
       );
       saveAs(blob, docName);
     } catch (err: any) {
@@ -189,8 +207,7 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
               template.id, 
               [item], 
               section.id, 
-              section, 
-              template.customFile
+              section
             );
 
             const arrayBuffer = await fileBlob.arrayBuffer();
@@ -227,14 +244,14 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
     templates,
     selectedTemplateId,
     setSelectedTemplateId,
-    customTemplateFiles,
-    setCustomTemplateFiles,
     processState,
     setProcessState,
     isProcessing,
     generateSingleRow,
     generateSectionDocument,
     generateAllDocuments: generateAllAsZips,
-    getTemplateForSection
+    getTemplateForSection,
+    uploadCustomTemplate,
+    removeCustomTemplate,
   };
 };

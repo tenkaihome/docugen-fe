@@ -112,5 +112,16 @@ export const apiClient = {
         error.response?.data?.message || 'Failed to upload and analyze template on the server.'
       );
     }
+  },
+
+  deleteTemplate: async (id: string): Promise<void> => {
+    try {
+      await client.delete(`/api/templates/${id}`);
+    } catch (error: any) {
+      console.error('Failed to delete template:', error);
+      throw new Error(
+        error.response?.data?.message || 'Failed to delete template from server.'
+      );
+    }
   }
 };

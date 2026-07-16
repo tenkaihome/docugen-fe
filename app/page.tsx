@@ -32,13 +32,13 @@ export default function Home() {
     templates,
     selectedTemplateId,
     setSelectedTemplateId,
-    customTemplateFiles,
-    setCustomTemplateFiles,
     processState,
     isProcessing,
     generateSingleRow,
     generateAllDocuments,
     getTemplateForSection,
+    uploadCustomTemplate,
+    removeCustomTemplate,
   } = useDocxGenerator(sections, selectedSections);
 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -232,11 +232,8 @@ export default function Home() {
               templates={templates}
               selectedTemplateId={selectedTemplateId}
               onTemplateChange={setSelectedTemplateId}
-              customFiles={customTemplateFiles}
-              onCustomFilesChange={setCustomTemplateFiles}
-              onRemoveCustomFile={(index) => {
-                setCustomTemplateFiles((prev) => prev.filter((_, idx) => idx !== index));
-              }}
+              onUploadFile={uploadCustomTemplate}
+              onRemoveTemplate={removeCustomTemplate}
             />
 
             {/* Nút Tiến hành tạo văn bản */}
@@ -244,13 +241,13 @@ export default function Home() {
               <div className="flex flex-col gap-2">
                 <Button
                   onClick={() => setIsPreviewOpen(true)}
-                  disabled={selectedTemplateId === 'custom' && customTemplateFiles.length === 0}
+                  disabled={selectedTemplateId === 'custom' && templates.length === 0}
                   className="w-full h-13 text-xs font-bold bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl shadow-lg shadow-violet-500/10 flex items-center justify-center gap-2 cursor-pointer shrink-0"
                 >
                   <Sparkles className="h-4.5 w-4.5" />
                   Tiến Hành Tạo Văn Bản (.docx)
                 </Button>
-                {selectedTemplateId === 'custom' && customTemplateFiles.length === 0 && (
+                {selectedTemplateId === 'custom' && templates.length === 0 && (
                   <p className="text-[10px] text-center font-semibold text-rose-550 dark:text-rose-400 animate-pulse">
                     * Vui lòng tải lên ít nhất 1 file mẫu Word (.docx) để bắt đầu
                   </p>
