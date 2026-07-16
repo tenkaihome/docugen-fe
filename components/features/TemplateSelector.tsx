@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { FileUp, FileCode, AlertCircle, Trash2, FileDown } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { EnterpriseTemplate } from '@/common/types';
+import { API_BASE_URL } from '@/config';
 
 interface TemplateSelectorProps {
   templates: EnterpriseTemplate[];
@@ -131,7 +132,6 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
                             window.open(`${API_BASE_URL}/api/templates/${template.id}/download`, '_blank');
                           }}
                           className={`
