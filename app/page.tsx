@@ -35,10 +35,13 @@ export default function Home() {
     processState,
     isProcessing,
     generateSingleRow,
+    generateSectionDocument,
     generateAllDocuments,
     getTemplateForSection,
     uploadCustomTemplate,
     removeCustomTemplate,
+    productNameMappings,
+    setProductNameMappings,
   } = useDocxGenerator(sections, selectedSections);
 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -234,6 +237,7 @@ export default function Home() {
               onTemplateChange={setSelectedTemplateId}
               onUploadFile={uploadCustomTemplate}
               onRemoveTemplate={removeCustomTemplate}
+              isProcessing={isProcessing}
             />
 
             {/* Nút Tiến hành tạo văn bản */}
@@ -264,13 +268,15 @@ export default function Home() {
           sections={sections}
           selectedSections={selectedSections}
           onToggleSection={toggleSection}
-          onDownloadSample={(item, sec) => generateSingleRow(item, sec)}
-          onDownloadAllZip={async () => {
-            await generateAllDocuments();
+          onDownloadSample={(items, sec) => generateSectionDocument(sec, items)}
+          onDownloadAllZip={async (itemKeys) => {
+            await generateAllDocuments(itemKeys);
             setIsPreviewOpen(false);
           }}
           isProcessing={isProcessing}
           getTemplateForSection={getTemplateForSection}
+          productNameMappings={productNameMappings}
+          setProductNameMappings={setProductNameMappings}
         />
       </main>
 

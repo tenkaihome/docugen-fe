@@ -10,6 +10,7 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
   
   const [processState, setProcessState] = useState<ProcessState>('IDLE');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [productNameMappings, setProductNameMappings] = useState<{ [prefix: string]: string }>({});
 
   // Load active templates
   const loadTemplates = useCallback(async () => {
@@ -123,19 +124,22 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
         template.id, 
         [rowData], 
         section.id, 
-        section
+        section,
+        undefined,
+        productNameMappings
       );
       saveAs(blob, docName);
     } catch (err: any) {
       console.error(err);
-      alert(`Lỗi tạo phiếu sản phẩm:\n${err.message}`);
+      const errMsg = err.response?.data?.message || err.message;
+      alert(`Lỗi tạo phiếu sản phẩm:\n${errMsg}`);
     }
-  }, [getTemplateForSection]);
+  }, [getTemplateForSection, productNameMappings]);
 
   /**
    * Generates a single combined Word document for a specific Section (containing all items as separate pages).
    */
-  const generateSectionDocument = useCallback(async (section: ExcelSection) => {
+  const generateSectionDocument = useCallback(async (section: ExcelSection, customItems?: ExcelItem[]) => {
     const template = getTemplateForSection(section);
     if (!template) {
       alert(`Lỗi: Không tìm thấy mẫu Word cho công ty: ${section.companyName}`);
@@ -143,24 +147,28 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
     }
 
     try {
+      const itemsToUse = customItems || section.items;
       const docName = `BaoCao_${section.companyId}_So_${section.so_de_nghi.replace(/[\/\\:]/g, '_')}.docx`;
       const blob = await apiClient.generateDocumentOnServer(
         template.id, 
-        section.items, 
+        itemsToUse, 
         section.id, 
-        section
+        section,
+        undefined,
+        productNameMappings
       );
       saveAs(blob, docName);
     } catch (err: any) {
       console.error(err);
-      alert(`Lỗi tạo báo cáo Section:\n${err.message}`);
+      const errMsg = err.response?.data?.message || err.message;
+      alert(`Lỗi tạo báo cáo Section:\n${errMsg}`);
     }
-  }, [getTemplateForSection]);
+  }, [getTemplateForSection, productNameMappings]);
 
   /**
    * Compiles active items, groups them by company, and generates separate ZIP files for each company.
    */
-  const generateAllAsZips = useCallback(async () => {
+  const generateAllAsZips = useCallback(async (filterItemKeys?: string[]) => {
     const activeSections = sections.filter(
       (s) => selectedSections.includes(s.id) && getTemplateForSection(s) !== null
     );
@@ -197,26 +205,37 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
 
         const companyZip = new PizZip();
         let companyFileCount = 0;
+        let lastFileBlob: Blob | null = null;
+        let lastDocName = '';
 
         for (const section of companySecs) {
-          for (const item of section.items) {
-            const cleanName = String(item.ten_hang).replace(/[\/\\:\*\?"<>\|]/g, '_').trim();
-            const docName = `${cleanName}_STT_${item.stt}.docx`;
+          const itemsToUse = filterItemKeys
+            ? section.items.filter(item => filterItemKeys.includes(`${section.id}-stt-${item.stt}-idx-${item.index}`))
+            : section.items;
 
-            const fileBlob = await apiClient.generateDocumentOnServer(
-              template.id, 
-              [item], 
-              section.id, 
-              section
-            );
+          if (itemsToUse.length === 0) continue;
 
-            const arrayBuffer = await fileBlob.arrayBuffer();
-            companyZip.file(docName, arrayBuffer);
-            companyFileCount++;
-          }
+          const docName = `BaoCao_${section.companyId}_So_${section.so_de_nghi.replace(/[\/\\:]/g, '_')}.docx`;
+
+          const fileBlob = await apiClient.generateDocumentOnServer(
+            template.id, 
+            itemsToUse, 
+            section.id, 
+            section,
+            undefined,
+            productNameMappings
+          );
+
+          const arrayBuffer = await fileBlob.arrayBuffer();
+          companyZip.file(docName, arrayBuffer);
+          companyFileCount++;
+          lastFileBlob = fileBlob;
+          lastDocName = docName;
         }
 
-        if (companyFileCount > 0) {
+        if (companyFileCount === 1 && companyIds.length === 1 && lastFileBlob) {
+          saveAs(lastFileBlob, lastDocName);
+        } else if (companyFileCount > 0) {
           const zipContent = companyZip.generate({
             type: 'blob',
             mimeType: 'application/zip',
@@ -233,12 +252,13 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
       setProcessState('SUCCESS');
     } catch (err: any) {
       console.error(err);
-      alert(`Lỗi đóng gói tệp ZIP:\n${err.message}`);
+      const errMsg = err.response?.data?.message || err.message;
+      alert(`Lỗi xuất file văn bản:\n${errMsg}`);
       setProcessState('ERROR');
     } finally {
       setIsProcessing(false);
     }
-  }, [sections, selectedSections, getTemplateForSection]);
+  }, [sections, selectedSections, getTemplateForSection, productNameMappings]);
 
   return {
     templates,
@@ -253,5 +273,7 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
     getTemplateForSection,
     uploadCustomTemplate,
     removeCustomTemplate,
+    productNameMappings,
+    setProductNameMappings,
   };
 };

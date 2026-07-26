@@ -95,34 +95,39 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
             </p>
           </div>
         ) : (
-          <div className="flex flex-col md:flex-row items-center justify-between p-5 rounded-2xl border border-zinc-150 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/40 gap-4">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-violet-600/10 dark:bg-violet-400/10 text-violet-600 dark:text-violet-400 rounded-xl">
-                <FileSpreadsheet className="h-7 w-7" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50 truncate max-w-[240px] sm:max-w-md">
-                  {selectedFile.name}
-                </p>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
-                  {formatFileSize(selectedFile.size)}
-                </p>
-              </div>
+          isParsing ? (
+            <div className="flex flex-col items-center justify-center p-8 border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/40 rounded-2xl gap-3 animate-pulse">
+              <RefreshCw className="h-8 w-8 text-violet-600 dark:text-violet-400 animate-spin" />
+              <p className="text-sm font-bold text-zinc-800 dark:text-zinc-200">
+                Đang phân tích cấu trúc dữ liệu Excel...
+              </p>
+              <p className="text-[10px] text-zinc-500 font-medium">
+                Tự động phân tách các hóa đơn (sections) xếp chồng
+              </p>
             </div>
-
-            <div className="flex items-center gap-3">
-              {isParsing ? (
-                <div className="flex items-center gap-2 text-xs font-semibold text-violet-600 dark:text-violet-400">
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                  Đang phân tích...
+          ) : (
+            <div className="flex flex-col md:flex-row items-center justify-between p-5 rounded-2xl border border-zinc-150 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/40 gap-4">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-violet-600/10 dark:bg-violet-400/10 text-violet-600 dark:text-violet-400 rounded-xl">
+                  <FileSpreadsheet className="h-7 w-7" />
                 </div>
-              ) : (
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50 truncate max-w-[240px] sm:max-w-md">
+                    {selectedFile.name}
+                  </p>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 font-medium">
+                    {formatFileSize(selectedFile.size)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
                 <Button variant="outline" size="sm" onClick={onClear}>
                   Thay đổi tệp
                 </Button>
-              )}
+              </div>
             </div>
-          </div>
+          )
         )}
 
         {error && (

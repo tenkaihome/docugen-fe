@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { FileUp, FileCode, AlertCircle, Trash2, FileDown } from 'lucide-react';
+import { FileUp, FileCode, AlertCircle, Trash2, FileDown, RefreshCw } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { EnterpriseTemplate } from '@/common/types';
 import { API_BASE_URL } from '@/config';
@@ -10,6 +10,7 @@ interface TemplateSelectorProps {
   onTemplateChange: (id: string) => void;
   onUploadFile: (file: File) => void;
   onRemoveTemplate: (id: string) => void;
+  isProcessing?: boolean;
 }
 
 export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
@@ -18,6 +19,7 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
   onTemplateChange,
   onUploadFile,
   onRemoveTemplate,
+  isProcessing = false,
 }) => {
   const [isDragActive, setIsDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -78,7 +80,15 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
           </h4>
         </div>
 
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 relative">
+          {isProcessing && (
+            <div className="absolute inset-0 bg-white/75 dark:bg-zinc-950/75 backdrop-blur-[1px] z-20 flex flex-col items-center justify-center gap-2.5 rounded-2xl">
+              <RefreshCw className="h-6 w-6 text-violet-600 dark:text-violet-400 animate-spin" />
+              <span className="text-[10px] font-bold text-zinc-650 dark:text-zinc-450 uppercase tracking-wider animate-pulse">
+                Đang xử lý biểu mẫu...
+              </span>
+            </div>
+          )}
           {/* Option: Auto-matching Mode */}
           <div
             onClick={() => onTemplateChange('custom')}

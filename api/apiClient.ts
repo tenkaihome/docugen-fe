@@ -35,7 +35,8 @@ export const apiClient = {
     data: any[],
     sheetName: string,
     sectionDetails?: any,
-    customFile?: File
+    customFile?: File,
+    productNameMappings?: { [prefix: string]: string }
   ): Promise<Blob> => {
     try {
       const formData = new FormData();
@@ -47,6 +48,9 @@ export const apiClient = {
       }
       if (customFile) {
         formData.append('template', customFile);
+      }
+      if (productNameMappings) {
+        formData.append('productNameMappings', JSON.stringify(productNameMappings));
       }
 
       const response = await client.post(

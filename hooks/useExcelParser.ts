@@ -18,9 +18,9 @@ export const useExcelParser = () => {
       const parsedSections = await parseExcelFile(uploadedFile);
       setSections(parsedSections);
       
-      // Auto-select all parsed sections by default
+      // Auto-select only the first parsed section by default to avoid checking all tabs
       if (parsedSections.length > 0) {
-        setSelectedSections(parsedSections.map(s => s.id));
+        setSelectedSections([parsedSections[0].id]);
       }
     } catch (err: any) {
       console.error(err);
@@ -35,8 +35,6 @@ export const useExcelParser = () => {
   const toggleSection = useCallback((sectionId: string) => {
     setSelectedSections((prev) => {
       if (prev.includes(sectionId)) {
-        // Don't allow deselecting if it's the last selected section
-        if (prev.length === 1) return prev;
         return prev.filter((id) => id !== sectionId);
       } else {
         return [...prev, sectionId];
@@ -49,11 +47,8 @@ export const useExcelParser = () => {
   }, [sections]);
 
   const deselectAllSections = useCallback(() => {
-    if (sections.length > 0) {
-      // Keep at least the first section
-      setSelectedSections([sections[0].id]);
-    }
-  }, [sections]);
+    setSelectedSections([]);
+  }, []);
 
   const clearParser = useCallback(() => {
     setFile(null);
