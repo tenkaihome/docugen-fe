@@ -10,7 +10,24 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
   
   const [processState, setProcessState] = useState<ProcessState>('IDLE');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [productNameMappings, setProductNameMappings] = useState<{ [prefix: string]: string }>({});
+  const [productNameMappings, setProductNameMappings] = useState<{ [prefix: string]: string }>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('docugen_product_name_mappings');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch (e) {
+          console.error('Failed to parse saved product name mappings', e);
+        }
+      }
+    }
+    return {};
+  });
+
+  // Save to LocalStorage on change
+  useEffect(() => {
+    localStorage.setItem('docugen_product_name_mappings', JSON.stringify(productNameMappings));
+  }, [productNameMappings]);
 
   // Load active templates
   const loadTemplates = useCallback(async () => {

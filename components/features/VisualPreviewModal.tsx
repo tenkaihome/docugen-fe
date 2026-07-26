@@ -465,13 +465,7 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
             </div>
           </div>
 
-          <div className="bg-zinc-50 dark:bg-zinc-900 p-3 rounded-xl border border-zinc-150 dark:border-zinc-800 text-[10px] leading-relaxed text-zinc-500 font-medium shrink-0">
-            <p className="font-bold text-zinc-700 dark:text-zinc-350 flex items-center gap-1 mb-1">
-              <Building2 className="h-3.5 w-3.5 text-violet-500" />
-              Tách ZIP theo Công ty
-            </p>
-            Hệ thống sẽ đóng gói và tải xuống riêng biệt các file ZIP chứa phiếu của từng công ty được chọn.
-          </div>
+
         </div>
 
         {/* Right column: High-fidelity paper-like mockup viewer */}
