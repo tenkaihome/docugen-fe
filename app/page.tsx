@@ -285,9 +285,7 @@ export default function Home() {
         <div className="flex items-center justify-center gap-1.5 mb-2">
           <span>DocuGen Studio FE</span>
           <span className="text-zinc-300 dark:text-zinc-800">|</span>
-          <span className="flex items-center gap-1">
-            Made with <Heart className="h-3 w-3 text-rose-500 fill-rose-500" /> by Antigravity
-          </span>
+          <span>Made by Liam</span>
         </div>
         <p className="text-[10px] text-zinc-400">
           © {new Date().getFullYear()} DocuGen System. Bảo lưu mọi quyền.

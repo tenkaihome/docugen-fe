@@ -41,12 +41,9 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       Array.from(e.dataTransfer.files).forEach((file) => {
-        if (file.name.endsWith('.docx')) {
+        const lowerName = file.name.toLowerCase();
+        if (lowerName.endsWith('.docx') || lowerName.endsWith('.doc')) {
           onUploadFile(file);
-        } else if (file.name.endsWith('.doc')) {
-          alert(
-            `Định dạng .doc của file "${file.name}" không được hỗ trợ.\n\nVui lòng mở bằng Word, chọn Save As và đổi thành .docx để tiếp tục.`
-          );
         }
       });
     }
@@ -55,12 +52,9 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       Array.from(e.target.files).forEach((file) => {
-        if (file.name.endsWith('.docx')) {
+        const lowerName = file.name.toLowerCase();
+        if (lowerName.endsWith('.docx') || lowerName.endsWith('.doc')) {
           onUploadFile(file);
-        } else if (file.name.endsWith('.doc')) {
-          alert(
-            `Định dạng .doc của file "${file.name}" không được hỗ trợ.\n\nVui lòng mở bằng Word, chọn Save As và đổi thành .docx để tiếp tục.`
-          );
         }
       });
     }
@@ -218,13 +212,13 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept=".docx"
+                accept=".docx,.doc"
                 onChange={handleFileChange}
                 className="hidden"
               />
               <FileUp className="h-5 w-5 text-zinc-450 dark:text-zinc-500 mb-2" />
               <p className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
-                Kéo thả file Word (.docx) hoặc click để tải lên mẫu mới
+                Kéo thả file Word (.docx, .doc) hoặc click để tải lên mẫu mới
               </p>
             </div>
           </div>
@@ -233,7 +227,7 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
             <div className="flex items-start gap-2 p-3 rounded-xl border border-amber-250 bg-amber-50/30 dark:border-amber-900/30 dark:bg-amber-950/10 text-[11px] font-medium text-amber-700 dark:text-amber-400">
               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
               <span>
-                Chưa có mẫu nào trong hệ thống. Vui lòng kéo thả hoặc click tải lên tệp mẫu Word (.docx) tương ứng với công ty cần xuất.
+                Chưa có mẫu nào trong hệ thống. Vui lòng kéo thả hoặc click tải lên tệp mẫu Word (.docx, .doc) tương ứng với công ty cần xuất.
               </span>
             </div>
           )}
