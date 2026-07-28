@@ -522,9 +522,9 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title="Kiểm Tra Bố Cục & Đóng Gói File Tải Về"
-      size="5xl"
+      size="full"
     >
-      <div className="flex flex-col lg:flex-row gap-6 h-[calc(85vh-8rem)] overflow-hidden">
+      <div className="flex flex-col lg:flex-row gap-6 h-[calc(90vh-8rem)] overflow-hidden">
         {/* Left column: Sidebar splits into Company Tabs & Files list */}
         <div className="w-full lg:w-80 flex flex-col gap-4 border-b lg:border-b-0 lg:border-r border-zinc-200 dark:border-zinc-800 pr-0 lg:pr-4 shrink-0 overflow-hidden">
           
@@ -793,7 +793,7 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
 
           {/* Template override selector */}
           {currentSection && (
-            <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-3 mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-3 mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs relative z-30">
               <div className="flex flex-col gap-0.5">
                 <span className="font-semibold text-zinc-700 dark:text-zinc-300">Biểu mẫu áp dụng cho hóa đơn này:</span>
                 <span className="text-[10px] text-zinc-450 dark:text-zinc-550">
@@ -837,14 +837,14 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
                   <>
                     {/* Click outside backdrop handler */}
                     <div 
-                      className="fixed inset-0 z-40 bg-transparent"
+                      className="fixed inset-0 z-[999] bg-transparent"
                       onClick={() => {
                         setIsDropdownOpen(false);
                         setTemplateSearch('');
                       }}
                     />
 
-                    <div className="absolute left-0 right-0 top-full mt-1.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto p-1.5 flex flex-col gap-0.5">
+                    <div className="absolute left-0 right-0 top-full mt-1.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl z-[1000] max-h-56 overflow-y-auto p-1.5 flex flex-col gap-0.5">
                       <div 
                         onClick={() => {
                           setTemplateOverrides(prev => {
@@ -898,7 +898,26 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
           )}
 
           {/* Scrollable A4 Container */}
-          <div className="flex-1 overflow-auto border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/50 p-6 rounded-2xl flex justify-center relative">
+          <div className="flex-1 overflow-auto border border-zinc-200 dark:border-zinc-800 bg-zinc-150/40 dark:bg-zinc-900/55 p-3 rounded-2xl flex justify-center relative">
+            <style>{`
+              .docx-wrapper {
+                background: transparent !important;
+                padding: 0 !important;
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                width: 100% !important;
+              }
+              .docx {
+                box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.08) !important;
+                margin: 0 auto 16px auto !important;
+                max-width: 100% !important;
+                height: auto !important;
+              }
+              .docx_page {
+                margin-bottom: 16px !important;
+              }
+            `}</style>
             {isProcessing && (
               <div className="absolute inset-0 bg-white/60 dark:bg-zinc-950/60 backdrop-blur-sm z-30 flex flex-col items-center justify-center gap-3 transition-all duration-300">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20 animate-bounce">
