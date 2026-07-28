@@ -481,7 +481,7 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
     return () => {
       active = false;
     };
-  }, [isOpen, currentItem, currentTemplate, productNameMappings]);
+  }, [isOpen, activeItemKey, currentTemplate?.id, JSON.stringify(productNameMappings)]);
 
   // Hook to actually invoke docx-preview to render the generated Blob
   useEffect(() => {
@@ -804,10 +804,7 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
               </div>
               
               {/* Searchable Dropdown */}
-              <div 
-                className="relative w-full sm:w-80" 
-                onMouseLeave={() => setIsDropdownOpen(false)}
-              >
+              <div className="relative w-full sm:w-80">
                 <div className="relative">
                   <input
                     type="text"
@@ -827,7 +824,7 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
                           setTemplateSearch('');
                           setIsDropdownOpen(false);
                         }}
-                        className="text-zinc-400 hover:text-zinc-650 text-sm"
+                        className="text-zinc-400 hover:text-zinc-650 text-sm cursor-pointer"
                       >
                         ×
                       </button>
@@ -837,53 +834,64 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
                 </div>
 
                 {isDropdownOpen && (
-                  <div className="absolute left-0 right-0 top-full mt-1.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto p-1.5 flex flex-col gap-0.5">
+                  <>
+                    {/* Click outside backdrop handler */}
                     <div 
+                      className="fixed inset-0 z-40 bg-transparent"
                       onClick={() => {
-                        setTemplateOverrides(prev => {
-                          const next = { ...prev };
-                          delete next[currentSection.id];
-                          return next;
-                        });
                         setIsDropdownOpen(false);
                         setTemplateSearch('');
                       }}
-                      className="p-2 text-xs rounded-lg cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-955/40 text-violet-650 dark:text-violet-455 font-bold flex items-center justify-between"
-                    >
-                      <span>✨ Tự động nhận diện (Mặc định)</span>
-                      {!templateOverrides[currentSection.id] && <Check className="h-3 w-3" />}
-                    </div>
-                    
-                    {filteredTemplates.map((tpl) => {
-                      const isSelected = templateOverrides[currentSection.id] === tpl.id;
-                      return (
-                        <div
-                          key={tpl.id}
-                          onClick={() => {
-                            setTemplateOverrides(prev => ({
-                              ...prev,
-                              [currentSection.id]: tpl.id
-                            }));
-                            setIsDropdownOpen(false);
-                            setTemplateSearch('');
-                          }}
-                          className={`p-2 text-xs rounded-lg cursor-pointer transition-all flex items-center justify-between font-medium ${
-                            isSelected 
-                              ? 'bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white font-bold' 
-                              : 'hover:bg-zinc-50 dark:hover:bg-zinc-900/60 text-zinc-700 dark:text-zinc-300'
-                          }`}
-                        >
-                          <span className="truncate pr-4">{tpl.name}</span>
-                          {isSelected && <Check className="h-3 w-3 text-violet-500" />}
-                        </div>
-                      );
-                    })}
-                    {filteredTemplates.length === 0 && (
-                      <div className="p-2 text-[10.5px] text-zinc-400 text-center italic">
-                        Không tìm thấy mẫu phù hợp
+                    />
+
+                    <div className="absolute left-0 right-0 top-full mt-1.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto p-1.5 flex flex-col gap-0.5">
+                      <div 
+                        onClick={() => {
+                          setTemplateOverrides(prev => {
+                            const next = { ...prev };
+                            delete next[currentSection.id];
+                            return next;
+                          });
+                          setIsDropdownOpen(false);
+                          setTemplateSearch('');
+                        }}
+                        className="p-2 text-xs rounded-lg cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-955/40 text-violet-650 dark:text-violet-455 font-bold flex items-center justify-between"
+                      >
+                        <span>✨ Tự động nhận diện (Mặc định)</span>
+                        {!templateOverrides[currentSection.id] && <Check className="h-3 w-3" />}
                       </div>
-                    )}
-                  </div>
+                      
+                      {filteredTemplates.map((tpl) => {
+                        const isSelected = templateOverrides[currentSection.id] === tpl.id;
+                        return (
+                          <div
+                            key={tpl.id}
+                            onClick={() => {
+                              setTemplateOverrides(prev => ({
+                                ...prev,
+                                [currentSection.id]: tpl.id
+                              }));
+                              setIsDropdownOpen(false);
+                              setTemplateSearch('');
+                            }}
+                            className={`p-2 text-xs rounded-lg cursor-pointer transition-all flex items-center justify-between font-medium ${
+                              isSelected 
+                                ? 'bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white font-bold' 
+                                : 'hover:bg-zinc-50 dark:hover:bg-zinc-900/60 text-zinc-700 dark:text-zinc-300'
+                            }`}
+                          >
+                            <span className="truncate pr-4">{tpl.name}</span>
+                            {isSelected && <Check className="h-3 w-3 text-violet-500" />}
+                          </div>
+                        );
+                      })}
+                      {filteredTemplates.length === 0 && (
+                        <div className="p-2 text-[10.5px] text-zinc-400 text-center italic">
+                          Không tìm thấy mẫu phù hợp
+                        </div>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
             </div>
