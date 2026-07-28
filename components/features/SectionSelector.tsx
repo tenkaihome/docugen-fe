@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, Eye, TableProperties, Building2, User, Landmark } from 'lucide-react';
+import { Layers, Eye, TableProperties, Building2, User, Landmark, MapPin } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
@@ -195,6 +195,12 @@ export const SectionSelector: React.FC<SectionSelectorProps> = ({
                       Công trình: <span className="font-semibold text-zinc-700 dark:text-zinc-350">{section.ten_cong_trinh}</span>
                     </p>
                   )}
+                  {section.dia_chi && (
+                    <p className="truncate flex items-center gap-1.5">
+                      <MapPin className="h-3 w-3 shrink-0" />
+                      Địa chỉ: <span className="font-semibold text-zinc-700 dark:text-zinc-350">{section.dia_chi}</span>
+                    </p>
+                  )}
                 </div>
 
                 {/* Bottom Badges */}
@@ -237,6 +243,10 @@ export const SectionSelector: React.FC<SectionSelectorProps> = ({
                 <div>
                   <span className="font-semibold text-zinc-400 dark:text-zinc-500">Tên công trình:</span>
                   <p className="font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{previewSection.ten_cong_trinh || '---'}</p>
+                </div>
+                <div className="md:col-span-2">
+                  <span className="font-semibold text-zinc-400 dark:text-zinc-500">Địa chỉ:</span>
+                  <p className="font-bold text-zinc-800 dark:text-zinc-200 mt-0.5">{previewSection.dia_chi || '---'}</p>
                 </div>
                 <div>
                   <span className="font-semibold text-zinc-400 dark:text-zinc-500">Người đề nghị:</span>
