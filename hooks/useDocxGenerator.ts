@@ -146,9 +146,9 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
     return null;
   }, [selectedTemplateId, templates]);
 
-  const getGroupsForCompany = useCallback((companyId: string, companyItems: ExcelItem[], section: ExcelSection): ExportGroup[] => {
+  const getGroupsForCompany = useCallback((companyId: string, companyItems: any[], section: ExcelSection): ExportGroup[] => {
     const existing = exportGroups[companyId];
-    const allItemKeys = companyItems.map(item => `${section.id}-stt-${item.stt}-idx-${item.index}`);
+    const allItemKeys = companyItems.map(item => item.uniqueKey || `${section.id}-stt-${item.stt}-idx-${item.index}`);
     
     const defaultTemplate = getTemplateForSection(section);
     const defaultTemplateId = defaultTemplate?.id || 'custom';
@@ -338,9 +338,12 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
         const companySecs = groupedSections[companyId];
         const representativeSec = companySecs[0];
 
-        const allCompanyItems: ExcelItem[] = [];
+        const allCompanyItems: any[] = [];
         for (const sec of companySecs) {
-          allCompanyItems.push(...sec.items);
+          allCompanyItems.push(...sec.items.map(item => ({
+            ...item,
+            uniqueKey: `${sec.id}-stt-${item.stt}-idx-${item.index}`
+          })));
         }
 
         const groups = getGroupsForCompany(companyId, allCompanyItems, representativeSec);
