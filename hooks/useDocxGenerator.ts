@@ -106,10 +106,25 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
       // Look for fuzzy name match in loaded database templates
       const matched = templates.find((t) => {
         const normalizedTemplateName = normalizeString(t.name);
-        return (
+        if (
           normalizedCompanyName.includes(normalizedTemplateName) || 
           normalizedTemplateName.includes(normalizedCompanyName)
-        );
+        ) {
+          return true;
+        }
+
+        // Fallback: Split template name by words and check if any contiguous block of >= 2 words matches the company name
+        const templateWords = t.name.toLowerCase().split(/[\s_-]+/);
+        for (let i = 0; i < templateWords.length; i++) {
+          for (let j = i + 2; j <= templateWords.length; j++) {
+            const subName = templateWords.slice(i, j).join('');
+            const normalizedSub = normalizeString(subName);
+            if (normalizedSub.length >= 5 && normalizedCompanyName.includes(normalizedSub)) {
+              return true;
+            }
+          }
+        }
+        return false;
       });
 
       if (matched) return matched;
