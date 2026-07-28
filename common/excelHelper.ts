@@ -53,6 +53,7 @@ export const parseExcelFile = (file: File): Promise<ExcelSection[]> => {
               let ten_khach_hang = '';
               let nha_cung_cap_cho = '';
               let ten_cong_trinh = '';
+              let dia_chi = '';
               let ngay_de_nghi = '';
               let nguoi_de_nghi = '';
 
@@ -91,15 +92,15 @@ export const parseExcelFile = (file: File): Promise<ExcelSection[]> => {
                   const cellIndex = scanRow.findIndex(c => String(c).toUpperCase().includes('TÊN KHÁCH HÀNG') || String(c).toUpperCase().includes('TEN KHACH HANG'));
                   if (cellIndex !== -1) {
                     const cellVal = String(scanRow[cellIndex]);
-                    const parts = cellVal.split(/[:]/);
+                    const parts = cellVal.split(/[:：]/);
                     if (parts.length > 1) {
-                      ten_khach_hang = parts[1].replace(/là nhà cung cấp cho:?/i, '').replace(/la nha cung cap cho:?/i, '').trim();
+                      ten_khach_hang = parts.slice(1).join(':').replace(/là nhà cung cấp cho:?/i, '').replace(/la nha cung cap cho:?/i, '').trim();
                     }
                   }
                 }
 
                 // Check for 'nhà cung cấp cho' or the partner company name which usually sits under Tên khách hàng
-                if (scanRowText.toUpperCase().includes('CÔNG TY TNHH') && !scanRowText.toUpperCase().includes('PHÚ MINH') && !scanRowText.toUpperCase().includes('XUÂN LỘC THỌ') && !scanRowText.toUpperCase().includes('TÊN CÔNG TRÌNH') && !scanRowText.toUpperCase().includes('KÍNH GỬI')) {
+                if (scanRowText.toUpperCase().includes('CÔNG TY TNHH') && !scanRowText.toUpperCase().includes('PHÚ MINH') && !scanRowText.toUpperCase().includes('XUÂN LỘC THỌ') && !scanRowText.toUpperCase().includes('TÊN CÔNG TRÌNH') && !scanRowText.toUpperCase().includes('ĐỊA CHỈ') && !scanRowText.toUpperCase().includes('DIA CHI') && !scanRowText.toUpperCase().includes('KÍNH GỬI')) {
                   nha_cung_cap_cho = scanRow.map(c => String(c).trim()).filter(c => c !== '').join(' ');
                 }
 
@@ -107,9 +108,20 @@ export const parseExcelFile = (file: File): Promise<ExcelSection[]> => {
                 if (scanRowText.toUpperCase().includes('TÊN CÔNG TRÌNH') || scanRowText.toUpperCase().includes('TEN CONG TRINH')) {
                   const cellIndex = scanRow.findIndex(c => String(c).toUpperCase().includes('TÊN CÔNG TRÌNH') || String(c).toUpperCase().includes('TEN CONG TRINH'));
                   if (cellIndex !== -1) {
-                    const parts = String(scanRow[cellIndex]).split(/[:]/);
+                    const parts = String(scanRow[cellIndex]).split(/[:：]/);
                     if (parts.length > 1) {
-                      ten_cong_trinh = parts[1].trim();
+                      ten_cong_trinh = parts.slice(1).join(':').trim();
+                    }
+                  }
+                }
+
+                // Check for 'Địa chỉ' / 'Dia chi'
+                if (scanRowText.toUpperCase().includes('ĐỊA CHỈ') || scanRowText.toUpperCase().includes('DIA CHI')) {
+                  const cellIndex = scanRow.findIndex(c => String(c).toUpperCase().includes('ĐỊA CHỈ') || String(c).toUpperCase().includes('DIA CHI'));
+                  if (cellIndex !== -1) {
+                    const parts = String(scanRow[cellIndex]).split(/[:：]/);
+                    if (parts.length > 1) {
+                      dia_chi = parts.slice(1).join(':').trim();
                     }
                   }
                 }
@@ -230,6 +242,7 @@ export const parseExcelFile = (file: File): Promise<ExcelSection[]> => {
                 ten_khach_hang,
                 nha_cung_cap_cho,
                 ten_cong_trinh,
+                dia_chi,
                 ngay_de_nghi,
                 nguoi_de_nghi,
                 items,

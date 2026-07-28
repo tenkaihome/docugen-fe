@@ -15,6 +15,7 @@ export interface ExcelItem {
   ten_khach_hang?: string;
   nha_cung_cap_cho?: string;
   ten_cong_trinh?: string;
+  dia_chi?: string;
   ngay_de_nghi?: string;
   nguoi_de_nghi?: string;
   [key: string]: any;
@@ -28,6 +29,7 @@ export interface ExcelSection {
   ten_khach_hang: string;
   nha_cung_cap_cho: string;
   ten_cong_trinh: string;
+  dia_chi: string;
   ngay_de_nghi: string;
   nguoi_de_nghi: string;
   items: ExcelItem[];
