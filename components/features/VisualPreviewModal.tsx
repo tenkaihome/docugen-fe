@@ -3,6 +3,10 @@ import { Eye, FileDown, FolderArchive, HelpCircle, Check, Building2, Sparkles } 
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { ExcelSection, ExcelItem } from '@/common/types';
+import axios from 'axios';
+import PizZip from 'pizzip';
+import Docxtemplater from 'docxtemplater';
+import { API_BASE_URL } from '@/config';
 
 const formatSoDocx = (soDeNghi: string, hdXltSo: string): string => {
   const cleanSo = String(soDeNghi || '').trim();
@@ -192,6 +196,14 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
   const [templateSearch, setTemplateSearch] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
+  const currentItem = companyItems.find((i) => i.uniqueKey === activeItemKey) || companyItems[0];
+  const currentSection = currentItem?.section;
+  
+  const currentTemplate = currentSection ? getTemplateForSection(currentSection) : null;
+  const filteredTemplates = templates.filter((t) =>
+    t.name.toLowerCase().includes(templateSearch.toLowerCase())
+  );
+
   // Sync active item key
   useEffect(() => {
     if (companyItems.length > 0) {
@@ -203,15 +215,301 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
     }
   }, [activeCompanyId, companyItems, activeItemKey]);
 
-  if (allCompanies.length === 0) return null;
+  const [renderedBlob, setRenderedBlob] = useState<Blob | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const docxContainerRef = React.useRef<HTMLDivElement>(null);
 
-  const currentItem = companyItems.find((i) => i.uniqueKey === activeItemKey) || companyItems[0];
-  const currentSection = currentItem?.section;
-  
-  const currentTemplate = currentSection ? getTemplateForSection(currentSection) : null;
-  const filteredTemplates = templates.filter((t) =>
-    t.name.toLowerCase().includes(templateSearch.toLowerCase())
-  );
+  // Load and compile template in the frontend to produce high-fidelity A4 document
+  useEffect(() => {
+    let active = true;
+    if (!isOpen || !currentItem || !currentTemplate) {
+      setRenderedBlob(null);
+      setPreviewError(null);
+      return;
+    }
+
+    const loadAndRender = async () => {
+      setIsPreviewLoading(true);
+      setPreviewError(null);
+      try {
+        // 1. Fetch template binary from backend
+        const response = await axios.get(`${API_BASE_URL}/api/templates/${currentTemplate.id}/download`, {
+          responseType: 'arraybuffer'
+        });
+        
+        if (!active) return;
+        const arrayBuffer = response.data;
+        
+        // 2. Prep data (same logic as backend)
+        const sec = currentItem.section;
+        
+        // Date and Number formatting helpers
+        const calculatedDate = calculateNgayXuatXuong(currentItem.hd_xlt_ngay, sec);
+        const calculatedSo = formatSoDocx(sec.so_de_nghi, currentItem.hd_xlt_so);
+        
+        // Format date components
+        const parseDateFields = (dateStr: string) => {
+          if (!dateStr) return { ngay: '', thang: '', nam: '' };
+          const clean = dateStr.trim();
+          // Extract TP, HCM ngày 03 tháng 07 năm 2026 or similar
+          const dayMatch = clean.match(/ngày\s+(\d+)/i);
+          const monthMatch = clean.match(/tháng\s+(\d+)/i);
+          const yearMatch = clean.match(/năm\s+(\d+)/i);
+          
+          if (dayMatch && monthMatch && yearMatch) {
+            return { ngay: dayMatch[1], thang: monthMatch[1], nam: yearMatch[1] };
+          }
+          
+          const parts = clean.split(/[./-]/);
+          if (parts.length === 3) {
+            return { ngay: parts[0], thang: parts[1], nam: parts[2] };
+          }
+          return { ngay: '', thang: '', nam: '' };
+        };
+        const dateFields = parseDateFields(calculatedDate);
+        
+        const vnSection = {
+          'Số phiếu': sec.so_de_nghi || '',
+          'Số đề nghị': sec.so_de_nghi || '',
+          'Số Phiếu': sec.so_de_nghi || '',
+          'Số Đề Nghị': sec.so_de_nghi || '',
+          'SỐ PHIẾU': sec.so_de_nghi || '',
+          'SỐ ĐỀ NGHỊ': sec.so_de_nghi || '',
+          'Số': sec.so_de_nghi || '',
+          'số': sec.so_de_nghi || '',
+          'SỐ': sec.so_de_nghi || '',
+          'so': sec.so_de_nghi || '',
+          'SO': sec.so_de_nghi || '',
+
+          'Khách hàng': sec.ten_khach_hang || '',
+          'Khách Hàng': sec.ten_khach_hang || '',
+          'KHÁCH HÀNG': sec.ten_khach_hang || '',
+          'Khách hàng / Customer': sec.ten_khach_hang || '',
+          'Khách hàng/Customer': sec.ten_khach_hang || '',
+          'Customer': sec.ten_khach_hang || '',
+          'CUSTOMER': sec.ten_khach_hang || '',
+
+          'Là nhà cung cấp cho': sec.nha_cung_cap_cho || '',
+          'Là Nhà Cung Cấp Cho': sec.nha_cung_cap_cho || '',
+          'LÀ NHÀ CUNG CẤP CHO': sec.nha_cung_cap_cho || '',
+
+          'Tên công trình': sec.ten_cong_trinh || '',
+          'Tên Công Trình': sec.ten_cong_trinh || '',
+          'TÊN CÔNG TRÌNH': sec.ten_cong_trinh || '',
+          'Công trình': sec.ten_cong_trinh || '',
+          'công trình': sec.ten_cong_trinh || '',
+          'CÔNG TRÌNH': sec.ten_cong_trinh || '',
+          'cong trinh': sec.ten_cong_trinh || '',
+          'CONG TRINH': sec.ten_cong_trinh || '',
+
+          'Địa chỉ': sec.dia_chi || '',
+          'địa chỉ': sec.dia_chi || '',
+          'ĐỊA CHỈ': sec.dia_chi || '',
+          'dia chi': sec.dia_chi || '',
+          'DIA CHI': sec.dia_chi || '',
+          'Địa chỉ/Adress': sec.dia_chi || '',
+          'Dia chi/Adress': sec.dia_chi || '',
+
+          'Ngày đề nghị': sec.ngay_de_nghi || '',
+          'Ngày Đề Nghị': sec.ngay_de_nghi || '',
+          'NGÀY ĐỀ NGHỊ': sec.ngay_de_nghi || '',
+
+          'Ngày': dateFields.ngay || '',
+          'Ngay': dateFields.ngay || '',
+          'NGÀY': dateFields.ngay || '',
+          'NGAY': dateFields.ngay || '',
+          'Tháng': dateFields.thang || '',
+          'Thang': dateFields.thang || '',
+          'THÁNG': dateFields.thang || '',
+          'THANG': dateFields.thang || '',
+          'Năm': dateFields.nam || '',
+          'Nam': dateFields.nam || '',
+          'NĂM': dateFields.nam || '',
+          'NAM': dateFields.nam || '',
+
+          'Người đề nghị': sec.nguoi_de_nghi || '',
+          'Người Đề Nghị': sec.nguoi_de_nghi || '',
+          'NGƯỜI ĐỀ NGHỊ': sec.nguoi_de_nghi || '',
+        };
+
+        const uppercaseSection = {
+          SO_DE_NGHI: sec.so_de_nghi || '',
+          TEN_KHACH_HANG: String(sec.ten_khach_hang || '').toUpperCase(),
+          NHA_CUNG_CAP_CHO: String(sec.nha_cung_cap_cho || '').toUpperCase(),
+          TEN_CONG_TRINH: String(sec.ten_cong_trinh || '').toUpperCase(),
+          DIA_CHI: String(sec.dia_chi || '').toUpperCase(),
+          NGAY_DE_NGHI: String(sec.ngay_de_nghi || '').toUpperCase(),
+          NGUOI_DE_NGHI: String(sec.nguoi_de_nghi || '').toUpperCase(),
+        };
+
+        const extendWithVnKeys = (item: ExcelItem) => {
+          if (!item) return {};
+          return {
+            'Tên hàng': item.ten_hang || '',
+            'Tên Hàng': item.ten_hang || '',
+            'TÊN HÀNG': item.ten_hang || '',
+            'Mã hàng': item.ma_hang || '',
+            'Mã Hàng': item.ma_hang || '',
+            'MÃ HÀNG': item.ma_hang || '',
+            'DVT': item.dvt || '',
+            'Số lượng': item.so_luong || 0,
+            'Số Lượng': item.so_luong || 0,
+            'SỐ LƯỢNG': item.so_luong || 0,
+            'STT': item.stt || '',
+            'Dvt': item.dvt || '',
+            'dvt': item.dvt || '',
+            'hd_xlt_so': item.hd_xlt_so || '',
+            'hd_xlt_ngay': item.hd_xlt_ngay || '',
+            'hd_pm_ngay': item.hd_pm_ngay || '',
+            'ngay_ktcl': item.ngay_ktcl || '',
+          };
+        };
+
+        const itemDateAndSoFields = {
+          'Ngày': dateFields.ngay || '',
+          'Ngay': dateFields.ngay || '',
+          'NGÀY': dateFields.ngay || '',
+          'NGAY': dateFields.ngay || '',
+          'Tháng': dateFields.thang || '',
+          'Thang': dateFields.thang || '',
+          'THÁNG': dateFields.thang || '',
+          'THANG': dateFields.thang || '',
+          'Năm': dateFields.nam || '',
+          'Nam': dateFields.nam || '',
+          'NĂM': dateFields.nam || '',
+          'NAM': dateFields.nam || '',
+
+          'Số': calculatedSo || '',
+          'số': calculatedSo || '',
+          'SỐ': calculatedSo || '',
+          'so': calculatedSo || '',
+          'SO': calculatedSo || '',
+          'Số HD': calculatedSo || '',
+          'Số HĐ': calculatedSo || '',
+          'Số hd': calculatedSo || '',
+          'Số hđ': calculatedSo || '',
+          'SỐ HD': calculatedSo || '',
+          'SỐ HĐ': calculatedSo || '',
+          'So HD': calculatedSo || '',
+          'SO HD': calculatedSo || '',
+        };
+
+        const mappedProductName = getMappedProductName(currentItem.ma_hang, currentItem.ten_hang);
+        const itemProductFields = {
+          'Tên sản phẩm': mappedProductName || '',
+          'Tên Sản Phẩm': mappedProductName || '',
+          'TÊN SẢN PHẨM': mappedProductName || '',
+          'Tên sản phẩm / Product Name': mappedProductName || '',
+          'Tên sản phẩm/Product Name': mappedProductName || '',
+          'Product Name': mappedProductName || '',
+          'PRODUCT NAME': mappedProductName || '',
+        };
+
+        const getUppercaseKeys = (obj: any) => {
+          const res: any = {};
+          for (const key in obj) {
+            if (typeof obj[key] === 'string') {
+              res[key.toUpperCase()] = obj[key].toUpperCase();
+            } else {
+              res[key.toUpperCase()] = obj[key];
+            }
+          }
+          return res;
+        };
+
+        const items = [
+          {
+            ...currentItem,
+            ...getUppercaseKeys(currentItem),
+            ...extendWithVnKeys(currentItem),
+            ...itemDateAndSoFields,
+            ...itemProductFields,
+            page_break: false,
+            page_break_xml: '',
+          }
+        ];
+
+        // 3. Compile Docx
+        const zip = new PizZip(arrayBuffer);
+        const doc = new Docxtemplater(zip, {
+          paragraphLoop: true,
+          linebreaks: true,
+          nullGetter() {
+            return "";
+          }
+        });
+
+        doc.render({
+          items,
+          so_de_nghi: sec.so_de_nghi || '',
+          ten_khach_hang: sec.ten_khach_hang || '',
+          nha_cung_cap_cho: sec.nha_cung_cap_cho || '',
+          ten_cong_trinh: sec.ten_cong_trinh || '',
+          ngay_de_nghi: sec.ngay_de_nghi || '',
+          nguoi_de_nghi: sec.nguoi_de_nghi || '',
+          ...uppercaseSection,
+          ...vnSection,
+          ...itemDateAndSoFields,
+          ...currentItem,
+          ...getUppercaseKeys(currentItem),
+          ...extendWithVnKeys(currentItem),
+          ...itemProductFields,
+        });
+
+        const outBlob = doc.getZip().generate({
+          type: 'blob',
+          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        });
+
+        if (!active) return;
+        setRenderedBlob(outBlob);
+      } catch (err: any) {
+        console.error('Failed to compile preview template:', err);
+        if (active) {
+          setPreviewError(err.message || 'Lỗi khi sinh xem trước tệp Word');
+        }
+      } finally {
+        if (active) {
+          setIsPreviewLoading(false);
+        }
+      }
+    };
+
+    loadAndRender();
+
+    return () => {
+      active = false;
+    };
+  }, [isOpen, currentItem, currentTemplate, productNameMappings]);
+
+  // Hook to actually invoke docx-preview to render the generated Blob
+  useEffect(() => {
+    if (!renderedBlob || !docxContainerRef.current) return;
+    
+    let active = true;
+    const renderDocx = async () => {
+      try {
+        const docx = await import('docx-preview');
+        if (!active || !docxContainerRef.current) return;
+        docxContainerRef.current.innerHTML = '';
+        await docx.renderAsync(renderedBlob, docxContainerRef.current, undefined, {
+          inWrapper: false,
+          ignoreWidth: true,
+          ignoreHeight: true,
+        });
+      } catch (err) {
+        console.error('docx-preview failed:', err);
+      }
+    };
+    
+    renderDocx();
+    return () => {
+      active = false;
+    };
+  }, [renderedBlob]);
+
+  if (allCompanies.length === 0) return null;
 
   // Active export companies count
   const activeExportCount = allCompanies.filter((c) =>
@@ -612,117 +910,152 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
               </div>
             )}
             {isCompanySelected && currentItem ? (
-              /* Responsive Paper Sheet Document mockup */
-              <div className="bg-white text-zinc-950 p-12 border border-zinc-200/50 shadow-lg rounded-sm w-full max-w-[794px] aspect-[1/1.414] min-h-[950px] text-[11px] font-serif leading-relaxed flex flex-col justify-between shrink-0 select-none">
-                
-                {/* Report Header Logo Section */}
-                <div>
-                  <div className="flex items-start justify-between border-b border-zinc-950 pb-3 mb-5">
-                    <div className="w-2/3">
-                      <p className="font-bold text-[13px] uppercase tracking-wide">
-                        {currentSection?.companyName || 'CÔNG TY'}
-                      </p>
-                      <p className="text-[9px] text-zinc-650 font-sans italic mt-0.5">
-                        Địa chỉ: Văn phòng đại diện chính hãng
-                      </p>
-                      <p className="text-[9px] text-zinc-650 font-sans italic">
-                        Điện thoại liên hệ: 1900-XXXX
-                      </p>
-                    </div>
-                    <div className="text-right w-1/3 flex flex-col items-end">
-                      <div className="w-10 h-10 border border-zinc-900 flex items-center justify-center font-sans font-bold text-[10px] rounded-lg">
-                        ISO
+              /* Live Docx Preview or Fallback mockup container */
+              <div className="w-full flex justify-center min-h-[950px] relative">
+                {/* 1. Loader while compiling/rendering */}
+                {isPreviewLoading && (
+                  <div className="absolute inset-0 bg-white/60 dark:bg-zinc-950/60 backdrop-blur-sm z-20 flex flex-col items-center justify-center gap-3 rounded-2xl">
+                    <div className="w-10 h-10 border-4 border-violet-650 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-xs font-bold text-zinc-700 dark:text-zinc-300">Đang tải và đồng bộ mẫu xem trước...</p>
+                  </div>
+                )}
+
+                {/* 2. Error message if compilation fails */}
+                {previewError && (
+                  <div className="bg-red-50 dark:bg-red-955/20 border border-red-200 dark:border-red-900 rounded-2xl p-6 text-center max-w-md my-auto z-10">
+                    <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-2">Không thể hiển thị xem trước biểu mẫu:</p>
+                    <p className="text-[11px] text-zinc-650 dark:text-zinc-400 mb-4">{previewError}</p>
+                    <button 
+                      onClick={() => setPreviewError(null)}
+                      className="text-xs bg-red-100 hover:bg-red-250 text-red-800 dark:bg-red-900 dark:text-red-200 px-3 py-1.5 rounded-xl font-bold cursor-pointer transition-all"
+                    >
+                      Bỏ qua và xem mẫu mô phỏng
+                    </button>
+                  </div>
+                )}
+
+                {/* 3. The actual Word Docx container */}
+                {currentTemplate && renderedBlob && !previewError && (
+                  <div 
+                    ref={docxContainerRef}
+                    className="w-full bg-white text-zinc-900 border border-zinc-200/50 shadow-lg p-3 rounded-sm max-w-[794px] overflow-hidden"
+                  />
+                )}
+
+                {/* 4. Mockup fallback if no custom template or preview failed */}
+                {(!currentTemplate || !renderedBlob || previewError) && (
+                  /* Responsive Paper Sheet Document mockup */
+                  <div className="bg-white text-zinc-950 p-12 border border-zinc-200/50 shadow-lg rounded-sm w-full max-w-[794px] aspect-[1/1.414] min-h-[950px] text-[11px] font-serif leading-relaxed flex flex-col justify-between shrink-0 select-none">
+                    
+                    {/* Report Header Logo Section */}
+                    <div>
+                      <div className="flex items-start justify-between border-b border-zinc-950 pb-3 mb-5">
+                        <div className="w-2/3">
+                          <p className="font-bold text-[13px] uppercase tracking-wide">
+                            {currentSection?.companyName || 'CÔNG TY'}
+                          </p>
+                          <p className="text-[9px] text-zinc-650 font-sans italic mt-0.5">
+                            Địa chỉ: Văn phòng đại diện chính hãng
+                          </p>
+                          <p className="text-[9px] text-zinc-650 font-sans italic">
+                            Điện thoại liên hệ: 1900-XXXX
+                          </p>
+                        </div>
+                        <div className="text-right w-1/3 flex flex-col items-end">
+                          <div className="w-10 h-10 border border-zinc-900 flex items-center justify-center font-sans font-bold text-[10px] rounded-lg">
+                            ISO
+                          </div>
+                          <span className="text-[8px] text-zinc-500 font-sans mt-1">TCVN ISO 9001:2015</span>
+                        </div>
                       </div>
-                      <span className="text-[8px] text-zinc-500 font-sans mt-1">TCVN ISO 9001:2015</span>
+
+                      {/* Report Title */}
+                      <div className="text-center mb-6">
+                        <h3 className="text-sm font-bold tracking-wider uppercase">
+                          PHIẾU KIỂM TRA CHẤT LƯỢNG
+                        </h3>
+                        <h4 className="text-[10px] font-bold tracking-wider uppercase font-sans mt-0.5 text-zinc-400">
+                          TEST REPORT
+                        </h4>
+                        <p className="font-bold uppercase mt-2 text-[10.5px]">
+                          Sản phẩm/Product: {currentItem ? getMappedProductName(currentItem.ma_hang, currentItem.ten_hang).toUpperCase() : '---'}
+                        </p>
+                      </div>
+
+                      {/* Reference Details */}
+                      <div className="grid grid-cols-2 gap-y-1.5 border border-zinc-950 p-3 mb-6 bg-zinc-50/50">
+                        <div>
+                          <span className="italic text-zinc-500">Số phiếu / No:</span>{' '}
+                          <span className="font-bold font-sans">
+                            {currentItem && currentSection ? formatSoDocx(currentSection.so_de_nghi, currentItem.hd_xlt_so) : '---'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="italic text-zinc-500">Ngày xuất xưởng / Date:</span>{' '}
+                          <span className="font-bold font-sans">
+                            {currentItem && currentSection ? calculateNgayXuatXuong(currentItem.hd_xlt_ngay, currentSection) : '---'}
+                          </span>
+                        </div>
+                        <div className="col-span-2 border-t border-zinc-200 pt-1.5">
+                          <span className="italic text-zinc-500">Khách hàng / Customer:</span>{' '}
+                          <span className="font-bold uppercase">{currentSection?.ten_khach_hang || '---'}</span>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="italic text-zinc-500">Là nhà cung cấp cho:</span>{' '}
+                          <span className="font-bold uppercase">{currentSection?.nha_cung_cap_cho || '---'}</span>
+                        </div>
+                      </div>
+
+                      {/* Properties table */}
+                      <table className="w-full text-left border-collapse text-[10.5px] border border-zinc-950 mb-6">
+                        <thead>
+                          <tr className="border-b border-zinc-950 bg-zinc-100 font-bold text-center">
+                            <th className="px-2.5 py-2 border-r border-zinc-950 w-8">TT</th>
+                            <th className="px-2.5 py-2 border-r border-zinc-950 w-2/5">Tên sản phẩm / Product Name</th>
+                            <th className="px-2.5 py-2 border-r border-zinc-950 w-20">Mã sản phẩm</th>
+                            <th className="px-2.5 py-2 border-r border-zinc-950 w-16">Số lượng</th>
+                            <th className="px-2.5 py-2 border-r border-zinc-950 w-28">Chỉ tiêu chất lượng</th>
+                            <th className="px-2.5 py-2 w-16">Kết quả</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="align-top border-b border-zinc-950">
+                            <td className="px-2.5 py-2.5 border-r border-zinc-950 text-center font-mono">1</td>
+                            <td className="px-2.5 py-2.5 border-r border-zinc-950 font-bold">{currentItem.ten_hang}</td>
+                            <td className="px-2.5 py-2.5 border-r border-zinc-950 text-center font-mono">{currentItem.ma_hang || '---'}</td>
+                            <td className="px-2.5 py-2.5 border-r border-zinc-950 text-center font-semibold">{currentItem.so_luong} {currentItem.dvt}</td>
+                            <td className="px-2.5 py-2.5 border-r border-zinc-950 text-zinc-650">
+                              - Khả năng cách điện<br />
+                              - Độ bền vật lý cơ học<br />
+                              - Tính thẩm mỹ đồng đều
+                            </td>
+                            <td className="px-2.5 py-2.5 text-center font-bold text-emerald-700">ĐẠT</td>
+                          </tr>
+                        </tbody>
+                      </table>
+
+                      <p className="text-[10px] text-zinc-500 italic mb-8">
+                        * Các chỉ tiêu kiểm tra chất lượng trên phù hợp theo các tiêu chuẩn kỹ thuật hiện hành. Đạt điều kiện nhập kho và đưa vào khai thác sử dụng.
+                      </p>
+                    </div>
+
+                    {/* Signatures */}
+                    <div className="flex justify-between text-center mt-auto border-t border-zinc-150 pt-6">
+                      <div className="w-1/3">
+                        <p className="font-bold text-[10px] uppercase">PHỤ TRÁCH Q.C</p>
+                        <p className="text-[9px] text-zinc-400 italic mt-0.5">CHIEF OF Q.C DEPT</p>
+                        <div className="h-16" />
+                        <p className="font-bold uppercase text-[10.5px]">NGUYỄN MẠNH HÙNG</p>
+                      </div>
+                      <div className="w-1/3">
+                        <p className="font-bold text-[10px] uppercase">KIỂM TRA VIÊN</p>
+                        <p className="text-[9px] text-zinc-400 italic mt-0.5">INSPECTOR</p>
+                        <div className="h-16" />
+                        <p className="font-bold uppercase text-[10.5px]">{currentSection?.nguoi_de_nghi || 'NGUYỄN THỊ ĐIỆP'}</p>
+                      </div>
                     </div>
                   </div>
-
-                  {/* Report Title */}
-                  <div className="text-center mb-6">
-                    <h3 className="text-sm font-bold tracking-wider uppercase">
-                      PHIẾU KIỂM TRA CHẤT LƯỢNG
-                    </h3>
-                    <h4 className="text-[10px] font-bold tracking-wider uppercase font-sans mt-0.5 text-zinc-400">
-                      TEST REPORT
-                    </h4>
-                    <p className="font-bold uppercase mt-2 text-[10.5px]">
-                      Sản phẩm/Product: {currentItem ? getMappedProductName(currentItem.ma_hang, currentItem.ten_hang).toUpperCase() : '---'}
-                    </p>
-                  </div>
-
-                  {/* Reference Details */}
-                  <div className="grid grid-cols-2 gap-y-1.5 border border-zinc-950 p-3 mb-6 bg-zinc-50/50">
-                    <div>
-                      <span className="italic text-zinc-500">Số phiếu / No:</span>{' '}
-                      <span className="font-bold font-sans">
-                        {currentItem && currentSection ? formatSoDocx(currentSection.so_de_nghi, currentItem.hd_xlt_so) : '---'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="italic text-zinc-500">Ngày xuất xưởng / Date:</span>{' '}
-                      <span className="font-bold font-sans">
-                        {currentItem && currentSection ? calculateNgayXuatXuong(currentItem.hd_xlt_ngay, currentSection) : '---'}
-                      </span>
-                    </div>
-                    <div className="col-span-2 border-t border-zinc-200 pt-1.5">
-                      <span className="italic text-zinc-500">Khách hàng / Customer:</span>{' '}
-                      <span className="font-bold uppercase">{currentSection?.ten_khach_hang || '---'}</span>
-                    </div>
-                    <div className="col-span-2">
-                      <span className="italic text-zinc-500">Là nhà cung cấp cho:</span>{' '}
-                      <span className="font-bold uppercase">{currentSection?.nha_cung_cap_cho || '---'}</span>
-                    </div>
-                  </div>
-
-                  {/* Properties table */}
-                  <table className="w-full text-left border-collapse text-[10.5px] border border-zinc-950 mb-6">
-                    <thead>
-                      <tr className="border-b border-zinc-950 bg-zinc-100 font-bold text-center">
-                        <th className="px-2.5 py-2 border-r border-zinc-950 w-8">TT</th>
-                        <th className="px-2.5 py-2 border-r border-zinc-950 w-2/5">Tên sản phẩm / Product Name</th>
-                        <th className="px-2.5 py-2 border-r border-zinc-950 w-20">Mã sản phẩm</th>
-                        <th className="px-2.5 py-2 border-r border-zinc-950 w-16">Số lượng</th>
-                        <th className="px-2.5 py-2 border-r border-zinc-950 w-28">Chỉ tiêu chất lượng</th>
-                        <th className="px-2.5 py-2 w-16">Kết quả</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="align-top border-b border-zinc-950">
-                        <td className="px-2.5 py-2.5 border-r border-zinc-950 text-center font-mono">1</td>
-                        <td className="px-2.5 py-2.5 border-r border-zinc-950 font-bold">{currentItem.ten_hang}</td>
-                        <td className="px-2.5 py-2.5 border-r border-zinc-950 text-center font-mono">{currentItem.ma_hang || '---'}</td>
-                        <td className="px-2.5 py-2.5 border-r border-zinc-950 text-center font-semibold">{currentItem.so_luong} {currentItem.dvt}</td>
-                        <td className="px-2.5 py-2.5 border-r border-zinc-950 text-zinc-650">
-                          - Khả năng cách điện<br />
-                          - Độ bền vật lý cơ học<br />
-                          - Tính thẩm mỹ đồng đều
-                        </td>
-                        <td className="px-2.5 py-2.5 text-center font-bold text-emerald-700">ĐẠT</td>
-                      </tr>
-                    </tbody>
-                  </table>
-
-                  <p className="text-[10px] text-zinc-500 italic mb-8">
-                    * Các chỉ tiêu kiểm tra chất lượng trên phù hợp theo các tiêu chuẩn kỹ thuật hiện hành. Đạt điều kiện nhập kho và đưa vào khai thác sử dụng.
-                  </p>
-                </div>
-
-                {/* Signatures */}
-                <div className="flex justify-between text-center mt-auto border-t border-zinc-150 pt-6">
-                  <div className="w-1/3">
-                    <p className="font-bold text-[10px] uppercase">PHỤ TRÁCH Q.C</p>
-                    <p className="text-[9px] text-zinc-400 italic mt-0.5">CHIEF OF Q.C DEPT</p>
-                    <div className="h-16" />
-                    <p className="font-bold uppercase text-[10.5px]">NGUYỄN MẠNH HÙNG</p>
-                  </div>
-                  <div className="w-1/3">
-                    <p className="font-bold text-[10px] uppercase">KIỂM TRA VIÊN</p>
-                    <p className="text-[9px] text-zinc-400 italic mt-0.5">INSPECTOR</p>
-                    <div className="h-16" />
-                    <p className="font-bold uppercase text-[10.5px]">{currentSection?.nguoi_de_nghi || 'NGUYỄN THỊ ĐIỆP'}</p>
-                  </div>
-                </div>
-
+                )}
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center text-center p-8 bg-white/5 border border-dashed border-zinc-300 dark:border-zinc-800 rounded-2xl w-full max-w-[794px] aspect-[1/1.414] text-zinc-400">
