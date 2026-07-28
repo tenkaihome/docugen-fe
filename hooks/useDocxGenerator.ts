@@ -7,6 +7,7 @@ import PizZip from 'pizzip';
 export const useDocxGenerator = (sections: ExcelSection[], selectedSections: string[]) => {
   const [templates, setTemplates] = useState<EnterpriseTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('custom');
+  const [templateOverrides, setTemplateOverrides] = useState<{ [sectionId: string]: string }>({});
   
   const [processState, setProcessState] = useState<ProcessState>('IDLE');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -89,6 +90,12 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
    * Matches a parsed section to a template from Firebase
    */
   const getTemplateForSection = useCallback((section: ExcelSection): EnterpriseTemplate | null => {
+    // 0. Check for explicit manual override for this section
+    if (templateOverrides[section.id]) {
+      const overriddenTpl = templates.find((t) => t.id === templateOverrides[section.id]);
+      if (overriddenTpl) return overriddenTpl;
+    }
+
     // 1. If a specific template is selected in the dropdown
     if (selectedTemplateId && selectedTemplateId !== 'custom') {
       const selectedTpl = templates.find((t) => t.id === selectedTemplateId);
@@ -135,7 +142,7 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
     if (matchedById) return matchedById;
 
     return null;
-  }, [selectedTemplateId, templates]);
+  }, [selectedTemplateId, templates, templateOverrides]);
 
   /**
    * Generates document for a single Excel row (creates a 1-page document with just that item).
@@ -296,6 +303,8 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
     templates,
     selectedTemplateId,
     setSelectedTemplateId,
+    templateOverrides,
+    setTemplateOverrides,
     processState,
     setProcessState,
     isProcessing,

@@ -32,6 +32,8 @@ export default function Home() {
     templates,
     selectedTemplateId,
     setSelectedTemplateId,
+    templateOverrides,
+    setTemplateOverrides,
     processState,
     isProcessing,
     generateSingleRow,
@@ -309,6 +311,9 @@ export default function Home() {
           getTemplateForSection={getTemplateForSection}
           productNameMappings={productNameMappings}
           setProductNameMappings={setProductNameMappings}
+          templates={templates}
+          templateOverrides={templateOverrides}
+          setTemplateOverrides={setTemplateOverrides}
         />
       </main>
 

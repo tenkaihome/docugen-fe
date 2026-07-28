@@ -88,6 +88,9 @@ interface VisualPreviewModalProps {
   getTemplateForSection: (section: ExcelSection) => any;
   productNameMappings: { [prefix: string]: string };
   setProductNameMappings: React.Dispatch<React.SetStateAction<{ [prefix: string]: string }>>;
+  templates: any[];
+  templateOverrides: { [sectionId: string]: string };
+  setTemplateOverrides: React.Dispatch<React.SetStateAction<{ [sectionId: string]: string }>>;
 }
 
 export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
@@ -102,6 +105,9 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
   getTemplateForSection,
   productNameMappings,
   setProductNameMappings,
+  templates,
+  templateOverrides,
+  setTemplateOverrides,
 }) => {
   // Get all companies with items (only those that have selected sections)
   const activeSections = sections.filter((s) => selectedSections.includes(s.id) && s.rowCount > 0);
@@ -183,6 +189,8 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
   };
 
   const [activeItemKey, setActiveItemKey] = useState<string>('');
+  const [templateSearch, setTemplateSearch] = useState('');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // Sync active item key
   useEffect(() => {
@@ -199,6 +207,11 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
 
   const currentItem = companyItems.find((i) => i.uniqueKey === activeItemKey) || companyItems[0];
   const currentSection = currentItem?.section;
+  
+  const currentTemplate = currentSection ? getTemplateForSection(currentSection) : null;
+  const filteredTemplates = templates.filter((t) =>
+    t.name.toLowerCase().includes(templateSearch.toLowerCase())
+  );
 
   // Active export companies count
   const activeExportCount = allCompanies.filter((c) =>
@@ -479,6 +492,104 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
               Kích thước chuẩn A4
             </span>
           </div>
+
+          {/* Template override selector */}
+          {currentSection && (
+            <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-3 mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="flex flex-col gap-0.5">
+                <span className="font-semibold text-zinc-700 dark:text-zinc-300">Biểu mẫu áp dụng cho hóa đơn này:</span>
+                <span className="text-[10px] text-zinc-450 dark:text-zinc-550">
+                  {templateOverrides[currentSection.id] 
+                    ? "Đã chọn thủ công" 
+                    : "Tự động chọn theo tên công ty"}
+                </span>
+              </div>
+              
+              {/* Searchable Dropdown */}
+              <div 
+                className="relative w-full sm:w-80" 
+                onMouseLeave={() => setIsDropdownOpen(false)}
+              >
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Tìm mẫu in..."
+                    value={isDropdownOpen ? templateSearch : (currentTemplate?.name || "Chọn mẫu in...")}
+                    onFocus={() => setIsDropdownOpen(true)}
+                    onChange={(e) => {
+                      setTemplateSearch(e.target.value);
+                      setIsDropdownOpen(true);
+                    }}
+                    className="w-full text-xs px-3.5 py-2 pr-10 rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200/80 focus:outline-none focus:ring-1 focus:ring-violet-500 dark:border-zinc-850 dark:text-white font-semibold shadow-sm"
+                  />
+                  <div className="absolute right-3 top-2.5 flex items-center gap-1.5">
+                    {templateSearch && (
+                      <button
+                        onClick={() => {
+                          setTemplateSearch('');
+                          setIsDropdownOpen(false);
+                        }}
+                        className="text-zinc-400 hover:text-zinc-650 text-sm"
+                      >
+                        ×
+                      </button>
+                    )}
+                    <Eye className="h-3.5 w-3.5 text-zinc-450" />
+                  </div>
+                </div>
+
+                {isDropdownOpen && (
+                  <div className="absolute left-0 right-0 top-full mt-1.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl z-50 max-h-56 overflow-y-auto p-1.5 flex flex-col gap-0.5">
+                    <div 
+                      onClick={() => {
+                        setTemplateOverrides(prev => {
+                          const next = { ...prev };
+                          delete next[currentSection.id];
+                          return next;
+                        });
+                        setIsDropdownOpen(false);
+                        setTemplateSearch('');
+                      }}
+                      className="p-2 text-xs rounded-lg cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-955/40 text-violet-650 dark:text-violet-455 font-bold flex items-center justify-between"
+                    >
+                      <span>✨ Tự động nhận diện (Mặc định)</span>
+                      {!templateOverrides[currentSection.id] && <Check className="h-3 w-3" />}
+                    </div>
+                    
+                    {filteredTemplates.map((tpl) => {
+                      const isSelected = templateOverrides[currentSection.id] === tpl.id;
+                      return (
+                        <div
+                          key={tpl.id}
+                          onClick={() => {
+                            setTemplateOverrides(prev => ({
+                              ...prev,
+                              [currentSection.id]: tpl.id
+                            }));
+                            setIsDropdownOpen(false);
+                            setTemplateSearch('');
+                          }}
+                          className={`p-2 text-xs rounded-lg cursor-pointer transition-all flex items-center justify-between font-medium ${
+                            isSelected 
+                              ? 'bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white font-bold' 
+                              : 'hover:bg-zinc-50 dark:hover:bg-zinc-900/60 text-zinc-700 dark:text-zinc-300'
+                          }`}
+                        >
+                          <span className="truncate pr-4">{tpl.name}</span>
+                          {isSelected && <Check className="h-3 w-3 text-violet-500" />}
+                        </div>
+                      );
+                    })}
+                    {filteredTemplates.length === 0 && (
+                      <div className="p-2 text-[10.5px] text-zinc-400 text-center italic">
+                        Không tìm thấy mẫu phù hợp
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Scrollable A4 Container */}
           <div className="flex-1 overflow-auto border border-zinc-200 dark:border-zinc-800 bg-zinc-100 dark:bg-zinc-900/50 p-6 rounded-2xl flex justify-center relative">
