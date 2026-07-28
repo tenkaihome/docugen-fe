@@ -963,7 +963,7 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
                 {currentTemplate && renderedBlob && !previewError && (
                   <div 
                     ref={docxContainerRef}
-                    className="w-full bg-white text-zinc-900 border border-zinc-200/50 shadow-lg p-3 rounded-sm max-w-[794px] overflow-hidden mx-auto"
+                    className="mx-auto"
                   />
                 )}
 
