@@ -10,7 +10,7 @@ import { TemplateSelector } from '@/components/features/TemplateSelector';
 import { ProcessConsole } from '@/components/features/ProcessConsole';
 import { PreviewSection } from '@/components/features/PreviewSection';
 import { VisualPreviewModal } from '@/components/features/VisualPreviewModal';
-import { FileDown, Sparkles, Heart, Sun, Moon } from 'lucide-react';
+import { FileDown, Sparkles, Heart, Sun, Moon, Search } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
 
@@ -44,10 +44,30 @@ export default function Home() {
     setProductNameMappings,
   } = useDocxGenerator(sections, selectedSections);
 
+  const [searchQuery, setSearchQuery] = useState('');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   // Theme state: defaults to 'light'
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+
+  // Compute filtered sections list based on search query
+  const filteredSections = React.useMemo(() => {
+    if (!searchQuery.trim()) return sections;
+    const query = searchQuery.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return sections.filter((sec) => {
+      // Search by company name
+      const companyMatch = sec.companyName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(query);
+      if (companyMatch) return true;
+
+      // Search by product names or product codes in the section's items
+      const itemMatch = sec.items.some((item) => {
+        const nameMatch = item.ten_hang.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(query);
+        const codeMatch = (item.ma_hang || '').toLowerCase().includes(query);
+        return nameMatch || codeMatch;
+      });
+      return itemMatch;
+    });
+  }, [sections, searchQuery]);
 
   // Initialize theme effect (force light by default)
   React.useEffect(() => {
@@ -154,6 +174,18 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-3">
+            {sections.length > 0 && (
+              <div className="relative shrink-0 w-60 hidden sm:block">
+                <input
+                  type="text"
+                  placeholder="Tìm kiếm công ty hoặc sản phẩm..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full text-xs px-3.5 py-2 pl-9 rounded-xl bg-zinc-50 border border-zinc-200/80 focus:outline-none focus:ring-1 focus:ring-violet-500 focus:border-violet-500 dark:bg-zinc-900/60 dark:border-zinc-800 dark:text-white"
+                />
+                <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-zinc-400" />
+              </div>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -218,7 +250,7 @@ export default function Home() {
             {/* Step 2: Choose Active Sections */}
             {excelFile && (
               <SectionSelector
-                sections={sections}
+                sections={filteredSections}
                 selectedSections={selectedSections}
                 onToggleSection={toggleSection}
                 onSelectAll={selectAllSections}
