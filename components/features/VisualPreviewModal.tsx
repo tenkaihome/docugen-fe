@@ -898,7 +898,7 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
           )}
 
           {/* Scrollable A4 Container */}
-          <div className="flex-1 overflow-auto border border-zinc-200 dark:border-zinc-800 bg-zinc-150/40 dark:bg-zinc-900/55 p-3 rounded-2xl flex justify-center relative">
+          <div className="flex-1 overflow-auto border border-zinc-200 dark:border-zinc-800 bg-zinc-150/40 dark:bg-zinc-900/55 p-3 rounded-2xl relative">
             <style>{`
               .docx-wrapper {
                 background: transparent !important;
@@ -938,11 +938,11 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
             )}
             {isCompanySelected && currentItem ? (
               /* Live Docx Preview or Fallback mockup container */
-              <div className="w-full flex justify-center min-h-[950px] relative">
+              <div className="w-full min-h-[950px] relative">
                 {/* 1. Loader while compiling/rendering */}
                 {isPreviewLoading && (
                   <div className="absolute inset-0 bg-white/60 dark:bg-zinc-950/60 backdrop-blur-sm z-20 flex flex-col items-center justify-center gap-3 rounded-2xl">
-                    <div className="w-10 h-10 border-4 border-violet-650 border-t-transparent rounded-full animate-spin"></div>
+                    <div className="w-10 h-10 border-4 border-violet-655 border-t-transparent rounded-full animate-spin"></div>
                     <p className="text-xs font-bold text-zinc-700 dark:text-zinc-300">Đang tải và đồng bộ mẫu xem trước...</p>
                   </div>
                 )}
@@ -965,14 +965,14 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
                 {currentTemplate && renderedBlob && !previewError && (
                   <div 
                     ref={docxContainerRef}
-                    className="w-full bg-white text-zinc-900 border border-zinc-200/50 shadow-lg p-3 rounded-sm max-w-[794px] overflow-hidden"
+                    className="w-full bg-white text-zinc-900 border border-zinc-200/50 shadow-lg p-3 rounded-sm max-w-[794px] overflow-hidden mx-auto"
                   />
                 )}
 
                 {/* 4. Mockup fallback if no custom template or preview failed */}
                 {(!currentTemplate || !renderedBlob || previewError) && (
                   /* Responsive Paper Sheet Document mockup */
-                  <div className="bg-white text-zinc-950 p-12 border border-zinc-200/50 shadow-lg rounded-sm w-full max-w-[794px] aspect-[1/1.414] min-h-[950px] text-[11px] font-serif leading-relaxed flex flex-col justify-between shrink-0 select-none">
+                  <div className="bg-white text-zinc-950 p-12 border border-zinc-200/50 shadow-lg rounded-sm w-full max-w-[794px] aspect-[1/1.414] min-h-[950px] text-[11px] font-serif leading-relaxed flex flex-col justify-between shrink-0 select-none mx-auto">
                     
                     {/* Report Header Logo Section */}
                     <div>
