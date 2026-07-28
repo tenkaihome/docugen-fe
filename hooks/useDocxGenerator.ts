@@ -4,10 +4,18 @@ import { apiClient } from '@/api/apiClient';
 import { saveAs } from 'file-saver';
 import PizZip from 'pizzip';
 
+export interface ExportGroup {
+  id: string;
+  name: string;
+  templateId: string;
+  itemKeys: string[];
+}
+
 export const useDocxGenerator = (sections: ExcelSection[], selectedSections: string[]) => {
   const [templates, setTemplates] = useState<EnterpriseTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('custom');
-  const [templateOverrides, setTemplateOverrides] = useState<{ [sectionId: string]: string }>({});
+  const [templateOverrides, setTemplateOverrides] = useState<{ [itemKey: string]: string }>({});
+  const [exportGroups, setExportGroups] = useState<Record<string, ExportGroup[]>>({});
   
   const [processState, setProcessState] = useState<ProcessState>('IDLE');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -90,12 +98,6 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
    * Matches a parsed section to a template from Firebase
    */
   const getTemplateForSection = useCallback((section: ExcelSection): EnterpriseTemplate | null => {
-    // 0. Check for explicit manual override for this section
-    if (templateOverrides[section.id]) {
-      const overriddenTpl = templates.find((t) => t.id === templateOverrides[section.id]);
-      if (overriddenTpl) return overriddenTpl;
-    }
-
     // 1. If a specific template is selected in the dropdown
     if (selectedTemplateId && selectedTemplateId !== 'custom') {
       const selectedTpl = templates.find((t) => t.id === selectedTemplateId);
@@ -142,7 +144,80 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
     if (matchedById) return matchedById;
 
     return null;
-  }, [selectedTemplateId, templates, templateOverrides]);
+  }, [selectedTemplateId, templates]);
+
+  const getGroupsForCompany = useCallback((companyId: string, companyItems: ExcelItem[], section: ExcelSection): ExportGroup[] => {
+    const existing = exportGroups[companyId];
+    const allItemKeys = companyItems.map(item => `${section.id}-stt-${item.stt}-idx-${item.index}`);
+    
+    const defaultTemplate = getTemplateForSection(section);
+    const defaultTemplateId = defaultTemplate?.id || 'custom';
+
+    if (!existing || existing.length === 0) {
+      return [
+        {
+          id: 'default',
+          name: 'Nhóm 1',
+          templateId: defaultTemplateId,
+          itemKeys: allItemKeys,
+        }
+      ];
+    }
+
+    // Sync item keys
+    const updated = existing.map(group => ({
+      ...group,
+      itemKeys: group.itemKeys.filter(k => allItemKeys.includes(k)),
+    }));
+
+    const assignedKeys = new Set(updated.flatMap(g => g.itemKeys));
+    const unassignedKeys = allItemKeys.filter(k => !assignedKeys.has(k));
+
+    if (unassignedKeys.length > 0) {
+      if (updated[0]) {
+        updated[0].itemKeys = [...updated[0].itemKeys, ...unassignedKeys];
+      } else {
+        updated.push({
+          id: 'default',
+          name: 'Nhóm 1',
+          templateId: defaultTemplateId,
+          itemKeys: unassignedKeys,
+        });
+      }
+    }
+
+    return updated;
+  }, [exportGroups, getTemplateForSection]);
+
+  const updateCompanyGroups = useCallback((companyId: string, groups: ExportGroup[]) => {
+    setExportGroups(prev => ({
+      ...prev,
+      [companyId]: groups,
+    }));
+  }, []);
+
+  const getTemplateForItem = useCallback((item: any, section: ExcelSection): EnterpriseTemplate | null => {
+    if (!item) return null;
+    const itemKey = item.uniqueKey || `${section.id}-stt-${item.stt}-idx-${item.index}`;
+    const companyId = section.companyId;
+    const groups = exportGroups[companyId];
+    
+    if (groups && groups.length > 0) {
+      const groupContainingItem = groups.find(g => g.itemKeys.includes(itemKey));
+      if (groupContainingItem) {
+        const tplId = groupContainingItem.templateId;
+        if (tplId && tplId !== 'custom') {
+          const tpl = templates.find(t => t.id === tplId);
+          if (tpl) return tpl;
+        } else if (tplId === 'custom') {
+          const autoTpl = getTemplateForSection(section);
+          if (autoTpl) return autoTpl;
+        }
+      }
+    }
+
+    return getTemplateForSection(section);
+  }, [exportGroups, templates, getTemplateForSection]);
 
   /**
    * Generates document for a single Excel row (creates a 1-page document with just that item).
@@ -178,41 +253,65 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
   /**
    * Generates a single combined Word document for a specific Section (containing all items as separate pages).
    */
+  /**
+   * Generates a single combined Word document for a specific Section (containing all items as separate pages).
+   */
   const generateSectionDocument = useCallback(async (section: ExcelSection, customItems?: ExcelItem[]) => {
-    const template = getTemplateForSection(section);
-    if (!template) {
-      alert(`Lỗi: Không tìm thấy mẫu Word cho công ty: ${section.companyName}`);
-      return;
-    }
-
     try {
       const itemsToUse = customItems || section.items;
+      if (itemsToUse.length === 0) return;
+
+      const companyId = section.companyId;
+      const groups = getGroupsForCompany(companyId, section.items, section);
+      const tasks: { templateId: string; items: ExcelItem[]; section: ExcelSection }[] = [];
+
+      for (const group of groups) {
+        const itemsInGroup = itemsToUse.filter(item => {
+          const itemKey = `${section.id}-stt-${item.stt}-idx-${item.index}`;
+          return group.itemKeys.includes(itemKey);
+        });
+
+        if (itemsInGroup.length === 0) continue;
+
+        let resolvedTemplateId = group.templateId;
+        if (resolvedTemplateId === 'custom') {
+          const autoTpl = getTemplateForSection(section);
+          resolvedTemplateId = autoTpl?.id || '';
+        }
+
+        if (!resolvedTemplateId) {
+          alert(`Không tìm thấy mẫu in phù hợp cho nhóm "${group.name}".`);
+          return;
+        }
+
+        tasks.push({
+          templateId: resolvedTemplateId,
+          items: itemsInGroup,
+          section: section
+        });
+      }
+
+      if (tasks.length === 0) return;
+
+      const mergedBlob = await apiClient.generateMultipleOnServer(tasks, productNameMappings);
       const docName = `BaoCao_${section.companyId}_So_${section.so_de_nghi.replace(/[\/\\:]/g, '_')}.docx`;
-      const blob = await apiClient.generateDocumentOnServer(
-        template.id, 
-        itemsToUse, 
-        section.id, 
-        section,
-        undefined,
-        productNameMappings
-      );
-      saveAs(blob, docName);
+      saveAs(mergedBlob, docName);
     } catch (err: any) {
       console.error(err);
       const errMsg = err.response?.data?.message || err.message;
       alert(`Lỗi tạo báo cáo Section:\n${errMsg}`);
     }
-  }, [getTemplateForSection, productNameMappings]);
+  }, [getGroupsForCompany, getTemplateForSection, productNameMappings]);
 
   /**
    * Compiles active items, groups them by company, and generates separate ZIP files for each company.
    */
   const generateAllAsZips = useCallback(async (filterItemKeys?: string[]) => {
     const activeSections = sections.filter(
-      (s) => selectedSections.includes(s.id) && getTemplateForSection(s) !== null
+      (s) => selectedSections.includes(s.id)
     );
     if (activeSections.length === 0) {
-      alert('Lỗi: Chưa chọn Section nào hợp lệ hoặc không có biểu mẫu khớp với các công ty được chọn.');
+      alert('Lỗi: Chưa chọn Section nào hợp lệ.');
       return;
     }
 
@@ -220,7 +319,7 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
     setProcessState('GENERATING');
 
     try {
-      // Group sections by companyId to create separate zip files
+      // Group sections by companyId to create separate merged files
       const groupedSections: { [companyId: string]: ExcelSection[] } = {};
       for (const section of activeSections) {
         if (!groupedSections[section.companyId]) {
@@ -230,62 +329,85 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
       }
 
       const companyIds = Object.keys(groupedSections);
+      const outputZip = new PizZip();
+      let generatedFileCount = 0;
+      let lastFileBlob: Blob | null = null;
+      let lastDocName = '';
 
       for (const companyId of companyIds) {
         const companySecs = groupedSections[companyId];
         const representativeSec = companySecs[0];
-        
-        // Find matched template
-        const template = getTemplateForSection(representativeSec);
-        if (!template) {
-          console.warn(`Không tìm thấy mẫu phù hợp cho công ty: ${representativeSec.companyName}`);
-          continue;
+
+        const allCompanyItems: ExcelItem[] = [];
+        for (const sec of companySecs) {
+          allCompanyItems.push(...sec.items);
         }
 
-        const companyZip = new PizZip();
-        let companyFileCount = 0;
-        let lastFileBlob: Blob | null = null;
-        let lastDocName = '';
+        const groups = getGroupsForCompany(companyId, allCompanyItems, representativeSec);
+        const tasks: { templateId: string; items: ExcelItem[]; section: ExcelSection }[] = [];
 
         for (const section of companySecs) {
           const itemsToUse = filterItemKeys
-            ? section.items.filter(item => filterItemKeys.includes(`${section.id}-stt-${item.stt}-idx-${item.index}`))
+            ? section.items.filter(item => 
+                filterItemKeys.includes(`${section.id}-stt-${item.stt}-idx-${item.index}`)
+              )
             : section.items;
 
           if (itemsToUse.length === 0) continue;
 
-          const docName = `BaoCao_${section.companyId}_So_${section.so_de_nghi.replace(/[\/\\:]/g, '_')}.docx`;
+          for (const group of groups) {
+            const itemsInGroup = itemsToUse.filter(item => {
+              const itemKey = `${section.id}-stt-${item.stt}-idx-${item.index}`;
+              return group.itemKeys.includes(itemKey);
+            });
 
-          const fileBlob = await apiClient.generateDocumentOnServer(
-            template.id, 
-            itemsToUse, 
-            section.id, 
-            section,
-            undefined,
-            productNameMappings
-          );
+            if (itemsInGroup.length === 0) continue;
 
-          const arrayBuffer = await fileBlob.arrayBuffer();
-          companyZip.file(docName, arrayBuffer);
-          companyFileCount++;
-          lastFileBlob = fileBlob;
-          lastDocName = docName;
+            let resolvedTemplateId = group.templateId;
+            if (resolvedTemplateId === 'custom') {
+              const autoTpl = getTemplateForSection(section);
+              resolvedTemplateId = autoTpl?.id || '';
+            }
+
+            if (!resolvedTemplateId) {
+              alert(`Không tìm thấy mẫu in phù hợp cho nhóm "${group.name}".`);
+              setIsProcessing(false);
+              setProcessState('ERROR');
+              return;
+            }
+
+            tasks.push({
+              templateId: resolvedTemplateId,
+              items: itemsInGroup,
+              section: section
+            });
+          }
         }
 
-        if (companyFileCount === 1 && companyIds.length === 1 && lastFileBlob) {
-          saveAs(lastFileBlob, lastDocName);
-        } else if (companyFileCount > 0) {
-          const zipContent = companyZip.generate({
-            type: 'blob',
-            mimeType: 'application/zip',
-          });
+        if (tasks.length === 0) continue;
 
-          const safeCompanyName = normalizeString(representativeSec.companyName).toUpperCase();
-          const zipName = `DocuGen_${safeCompanyName}_Export_${new Date().toISOString().slice(0, 10)}.zip`;
-          saveAs(zipContent, zipName);
-        }
+        // Generate the combined merged DOCX document on the server
+        const mergedBlob = await apiClient.generateMultipleOnServer(tasks, productNameMappings);
+        const safeCompanyName = normalizeString(representativeSec.companyName).toUpperCase();
+        const docName = `DocuGen_${safeCompanyName}.docx`;
 
-        await new Promise((r) => setTimeout(r, 200)); // Sleep between downloads to avoid browser block
+        outputZip.file(docName, await mergedBlob.arrayBuffer());
+        generatedFileCount++;
+        lastFileBlob = mergedBlob;
+        lastDocName = docName;
+
+        await new Promise((r) => setTimeout(r, 200)); // Sleep between requests
+      }
+
+      if (generatedFileCount === 1 && lastFileBlob) {
+        saveAs(lastFileBlob, lastDocName);
+      } else if (generatedFileCount > 0) {
+        const zipContent = outputZip.generate({
+          type: 'blob',
+          mimeType: 'application/zip',
+        });
+        const zipName = `DocuGen_Export_${new Date().toISOString().slice(0, 10)}.zip`;
+        saveAs(zipContent, zipName);
       }
 
       setProcessState('SUCCESS');
@@ -297,7 +419,7 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
     } finally {
       setIsProcessing(false);
     }
-  }, [sections, selectedSections, getTemplateForSection, productNameMappings]);
+  }, [sections, selectedSections, getGroupsForCompany, getTemplateForSection, productNameMappings]);
 
   return {
     templates,
@@ -305,6 +427,10 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
     setSelectedTemplateId,
     templateOverrides,
     setTemplateOverrides,
+    exportGroups,
+    setExportGroups,
+    getGroupsForCompany,
+    updateCompanyGroups,
     processState,
     setProcessState,
     isProcessing,
@@ -312,6 +438,7 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
     generateSectionDocument,
     generateAllDocuments: generateAllAsZips,
     getTemplateForSection,
+    getTemplateForItem,
     uploadCustomTemplate,
     removeCustomTemplate,
     productNameMappings,

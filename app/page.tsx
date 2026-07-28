@@ -34,12 +34,15 @@ export default function Home() {
     setSelectedTemplateId,
     templateOverrides,
     setTemplateOverrides,
+    getGroupsForCompany,
+    updateCompanyGroups,
     processState,
     isProcessing,
     generateSingleRow,
     generateSectionDocument,
     generateAllDocuments,
     getTemplateForSection,
+    getTemplateForItem,
     uploadCustomTemplate,
     removeCustomTemplate,
     productNameMappings,
@@ -309,11 +312,14 @@ export default function Home() {
           }}
           isProcessing={isProcessing}
           getTemplateForSection={getTemplateForSection}
+          getTemplateForItem={getTemplateForItem}
           productNameMappings={productNameMappings}
           setProductNameMappings={setProductNameMappings}
           templates={templates}
           templateOverrides={templateOverrides}
           setTemplateOverrides={setTemplateOverrides}
+          getGroupsForCompany={getGroupsForCompany}
+          updateCompanyGroups={updateCompanyGroups}
         />
       </main>
 

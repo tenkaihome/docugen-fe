@@ -118,6 +118,35 @@ export const apiClient = {
     }
   },
 
+  generateMultipleOnServer: async (
+    tasks: { templateId: string; items: any[]; section: any }[],
+    productNameMappings?: { [prefix: string]: string }
+  ): Promise<Blob> => {
+    try {
+      const response = await client.post(
+        `/api/generate-multiple`,
+        { tasks, productNameMappings },
+        {
+          responseType: 'blob', // Expect binary Word document back
+        }
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error('Server-side multiple document generation failed:', error);
+      let errorMsg = 'Server failed to process the templates.';
+      if (error.response?.data instanceof Blob) {
+        try {
+          const text = await error.response.data.text();
+          const parsed = JSON.parse(text);
+          errorMsg = parsed.message || errorMsg;
+        } catch (e) {}
+      } else if (error.response?.data?.message) {
+        errorMsg = error.response.data.message;
+      }
+      throw new Error(errorMsg);
+    }
+  },
+
   deleteTemplate: async (id: string): Promise<void> => {
     try {
       await client.delete(`/api/templates/${id}`);

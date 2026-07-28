@@ -7,6 +7,7 @@ import axios from 'axios';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import { API_BASE_URL } from '@/config';
+import { ExportGroup } from '@/hooks/useDocxGenerator';
 
 const formatSoDocx = (soDeNghi: string, hdXltSo: string): string => {
   const cleanSo = String(soDeNghi || '').trim();
@@ -90,11 +91,14 @@ interface VisualPreviewModalProps {
   onDownloadAllZip: (selectedItemKeys?: string[]) => void;
   isProcessing: boolean;
   getTemplateForSection: (section: ExcelSection) => any;
+  getTemplateForItem: (item: any, section: ExcelSection) => any;
   productNameMappings: { [prefix: string]: string };
   setProductNameMappings: React.Dispatch<React.SetStateAction<{ [prefix: string]: string }>>;
   templates: any[];
-  templateOverrides: { [sectionId: string]: string };
-  setTemplateOverrides: React.Dispatch<React.SetStateAction<{ [sectionId: string]: string }>>;
+  templateOverrides: { [itemKey: string]: string };
+  setTemplateOverrides: React.Dispatch<React.SetStateAction<{ [itemKey: string]: string }>>;
+  getGroupsForCompany: (companyId: string, companyItems: ExcelItem[], section: ExcelSection) => ExportGroup[];
+  updateCompanyGroups: (companyId: string, groups: ExportGroup[]) => void;
 }
 
 export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
@@ -107,11 +111,14 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
   onDownloadAllZip,
   isProcessing,
   getTemplateForSection,
+  getTemplateForItem,
   productNameMappings,
   setProductNameMappings,
   templates,
   templateOverrides,
   setTemplateOverrides,
+  getGroupsForCompany,
+  updateCompanyGroups,
 }) => {
   // Get all companies with items (only those that have selected sections)
   const activeSections = sections.filter((s) => selectedSections.includes(s.id) && s.rowCount > 0);
@@ -180,6 +187,61 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
     }))
   );
 
+  const currentGroups = activeCompanyId && currentCompany && currentCompany.sections[0]
+    ? getGroupsForCompany(activeCompanyId, companyItems, currentCompany.sections[0])
+    : [];
+
+  const handleAddGroup = () => {
+    if (!activeCompanyId || !currentCompany || !currentCompany.sections[0]) return;
+    const nextGroupNum = currentGroups.length + 1;
+    const newGroup: ExportGroup = {
+      id: `group-${Date.now()}`,
+      name: `Nhóm ${nextGroupNum}`,
+      templateId: 'custom',
+      itemKeys: []
+    };
+    updateCompanyGroups(activeCompanyId, [...currentGroups, newGroup]);
+  };
+
+  const handleRemoveGroup = (groupId: string) => {
+    if (currentGroups.length <= 1) return;
+    const groupToRemove = currentGroups.find(g => g.id === groupId);
+    if (!groupToRemove) return;
+    
+    const remainingGroups = currentGroups.filter(g => g.id !== groupId);
+    if (remainingGroups[0]) {
+      remainingGroups[0].itemKeys = [...remainingGroups[0].itemKeys, ...groupToRemove.itemKeys];
+    }
+    updateCompanyGroups(activeCompanyId, remainingGroups);
+  };
+
+  const handleMoveItem = (itemKey: string, targetGroupId: string) => {
+    const updated = currentGroups.map(group => {
+      const nextKeys = group.itemKeys.filter(k => k !== itemKey);
+      if (group.id === targetGroupId) {
+        nextKeys.push(itemKey);
+      }
+      return {
+        ...group,
+        itemKeys: nextKeys
+      };
+    });
+    updateCompanyGroups(activeCompanyId, updated);
+  };
+
+  const handleUpdateGroupTemplate = (groupId: string, templateId: string) => {
+    const updated = currentGroups.map(group => {
+      if (group.id === groupId) {
+        return {
+          ...group,
+          templateId
+        };
+      }
+      return group;
+    });
+    updateCompanyGroups(activeCompanyId, updated);
+  };
+
   const getMappedProductName = (maHang: string, rawName: string) => {
     if (!maHang) return rawName;
     const cleanMaHang = String(maHang).trim().toUpperCase();
@@ -195,11 +257,13 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
   const [activeItemKey, setActiveItemKey] = useState<string>('');
   const [templateSearch, setTemplateSearch] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [activeGroupDropdownId, setActiveGroupDropdownId] = useState<string | null>(null);
+  const [groupTemplateSearch, setGroupTemplateSearch] = useState('');
 
   const currentItem = companyItems.find((i) => i.uniqueKey === activeItemKey) || companyItems[0];
   const currentSection = currentItem?.section;
   
-  const currentTemplate = currentSection ? getTemplateForSection(currentSection) : null;
+  const currentTemplate = currentItem && currentSection ? getTemplateForItem(currentItem, currentSection) : null;
   const filteredTemplates = templates.filter((t) =>
     t.name.toLowerCase().includes(templateSearch.toLowerCase())
   );
@@ -514,7 +578,7 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
   // Active export companies count
   const activeExportCount = allCompanies.filter((c) =>
     c.sections.some((s) => selectedSections.includes(s.id)) &&
-    c.sections.every((sec) => getTemplateForSection(sec) !== null)
+    c.sections.every((sec) => sec.items.every(item => getTemplateForItem({ ...item, uniqueKey: `${sec.id}-stt-${item.stt}-idx-${item.index}` }, sec) !== null))
   ).length;
 
   return (
@@ -526,7 +590,7 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
     >
       <div className="flex flex-col lg:flex-row gap-6 h-[calc(90vh-8rem)] overflow-hidden">
         {/* Left column: Sidebar splits into Company Tabs & Files list */}
-        <div className="w-full lg:w-80 flex flex-col gap-4 border-b lg:border-b-0 lg:border-r border-zinc-200 dark:border-zinc-800 pr-0 lg:pr-4 shrink-0 overflow-hidden">
+        <div className="w-full lg:w-[410px] flex flex-col gap-4 border-b lg:border-b-0 lg:border-r border-zinc-200 dark:border-zinc-800 pr-0 lg:pr-4 shrink-0 overflow-hidden">
           
           {/* Section A: Company Tabs */}
           <div className="flex flex-col gap-1.5 shrink-0">
@@ -609,11 +673,11 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
           {/* Section B: Files List for Active Company */}
           <div className="flex-1 flex flex-col min-h-0">
             <div className="flex items-center justify-between mb-2 shrink-0">
-              <h5 className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+              <h5 className="text-[11.5px] font-bold uppercase tracking-wider text-zinc-400">
                 2. Danh sách File sản phẩm
               </h5>
               {isCompanySelected && (
-                <div className="flex gap-2 text-[10px] font-bold text-violet-650 dark:text-violet-400">
+                <div className="flex gap-2 text-[11.5px] font-bold text-violet-650 dark:text-violet-400">
                   <button 
                     onClick={() => {
                       const activeKeys = companyItems.map((item) => item.uniqueKey);
@@ -638,150 +702,261 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
             </div>
             
             {!isCompanySelected ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center p-4 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl bg-zinc-50/50 dark:bg-zinc-950/20 text-zinc-400">
+              <div className="flex-grow flex flex-col items-center justify-center text-center p-4 border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl bg-zinc-50/50 dark:bg-zinc-950/20 text-zinc-400">
                 <HelpCircle className="h-5 w-5 text-zinc-300 mb-1.5" />
                 <p className="text-[11px] font-medium leading-relaxed">
                   Tích chọn ô vuông phía trên công ty để kích hoạt hiển thị và xuất file
                 </p>
               </div>
             ) : (
-              <div className="flex-1 overflow-y-auto flex flex-col gap-1.5 pr-1">
-                {companyItems.map((item) => {
-                  const cleanName = String(item.ten_hang).replace(/[\/\\:\*\?"<>\|]/g, '_').trim();
-                  const docName = `${cleanName}_STT_${item.stt}.docx`;
-                  const isItemActive = activeItemKey === item.uniqueKey;
-                  const isChecked = selectedItemKeys.includes(item.uniqueKey);
+              <div className="flex-grow overflow-y-auto flex flex-col gap-3 pr-1">
+                {currentGroups.map((group) => {
+                  const itemsInGroup = companyItems.filter((item) =>
+                    group.itemKeys.includes(item.uniqueKey)
+                  );
 
                   return (
                     <div
-                      key={item.uniqueKey}
-                      className={`
-                        w-full px-3 py-1.5 rounded-xl border text-xs transition-all flex items-center justify-between gap-2.5
-                        ${
-                          isItemActive
-                            ? 'bg-zinc-900 text-white border-zinc-800 font-bold dark:bg-zinc-100 dark:text-zinc-900 dark:border-zinc-250'
-                            : 'bg-zinc-50/40 dark:bg-zinc-900/30 border-zinc-150 dark:border-zinc-850 text-zinc-650 hover:bg-zinc-100 dark:hover:bg-zinc-900'
-                        }
-                      `}
+                      key={group.id}
+                      className="border border-zinc-200/80 dark:border-zinc-800/80 rounded-2xl p-2.5 bg-zinc-50/30 dark:bg-zinc-900/10 flex flex-col gap-2 shadow-sm transition-all"
                     >
-                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            if (e.target.checked) {
-                              setSelectedItemKeys(prev => [...prev, item.uniqueKey]);
-                            } else {
-                              setSelectedItemKeys(prev => prev.filter(k => k !== item.uniqueKey));
-                            }
-                          }}
-                          className="h-3.5 w-3.5 rounded text-violet-650 border-zinc-300 dark:border-zinc-700 focus:ring-violet-500 cursor-pointer"
-                        />
-                        <span 
-                          onClick={() => setActiveItemKey(item.uniqueKey)}
-                          className="truncate font-semibold cursor-pointer flex-1 py-1"
-                        >
-                          {docName}
-                        </span>
+                      {/* Group Header */}
+                      <div className="flex items-center justify-between gap-2 border-b border-zinc-100 dark:border-zinc-900 pb-2 shrink-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="font-bold text-sm text-zinc-800 dark:text-zinc-200 truncate">
+                            {group.name}
+                          </span>
+                          <span className="text-[11.5px] bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 px-2 py-0.5 rounded-full font-mono font-bold shrink-0">
+                            {itemsInGroup.length}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {/* Searchable Template Dropdown */}
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (activeGroupDropdownId === group.id) {
+                                  setActiveGroupDropdownId(null);
+                                } else {
+                                  setActiveGroupDropdownId(group.id);
+                                  setGroupTemplateSearch('');
+                                }
+                              }}
+                              className="text-[11.5px] bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg px-2.5 py-1 text-zinc-700 dark:text-zinc-300 font-bold focus:outline-none flex items-center gap-1.5 max-w-[170px] shadow-sm cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/60"
+                            >
+                              <span className="truncate max-w-[130px]">
+                                {group.templateId === 'custom'
+                                  ? '🔍 Tự động chọn'
+                                  : (templates.find((t) => t.id === group.templateId)?.name || '🔍 Tự động chọn')}
+                              </span>
+                              <span className="text-zinc-400 text-[8px]">▼</span>
+                            </button>
+
+                            {activeGroupDropdownId === group.id && (
+                              <>
+                                {/* Click outside backdrop */}
+                                <div
+                                  className="fixed inset-0 z-[99] bg-transparent"
+                                  onClick={() => setActiveGroupDropdownId(null)}
+                                />
+
+                                {/* Dropdown Menu */}
+                                <div className="absolute right-0 top-full mt-1.5 bg-white dark:bg-zinc-955 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl z-[100] w-64 p-1.5 flex flex-col gap-1 text-left">
+                                  {/* Search Input */}
+                                  <input
+                                    type="text"
+                                    placeholder="Tìm kiếm mẫu in..."
+                                    value={groupTemplateSearch}
+                                    onChange={(e) => setGroupTemplateSearch(e.target.value)}
+                                    className="w-full text-xs px-2.5 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 focus:outline-none focus:ring-1 focus:ring-violet-500 dark:text-white font-medium"
+                                    autoFocus
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+
+                                  {/* Options List */}
+                                  <div className="max-h-48 overflow-y-auto flex flex-col gap-0.5 mt-1">
+                                    {/* Option: Auto detect */}
+                                    <div
+                                      onClick={() => {
+                                        handleUpdateGroupTemplate(group.id, 'custom');
+                                        setActiveGroupDropdownId(null);
+                                      }}
+                                      className={`p-2 text-[12px] rounded-lg cursor-pointer transition-all flex items-center justify-between font-bold ${
+                                        group.templateId === 'custom'
+                                          ? 'bg-violet-50 dark:bg-violet-955/40 text-violet-655 dark:text-violet-400'
+                                          : 'hover:bg-zinc-50 dark:hover:bg-zinc-900/60 text-zinc-700 dark:text-zinc-300'
+                                      }`}
+                                    >
+                                      <span>✨ Tự động nhận diện</span>
+                                      {group.templateId === 'custom' && <Check className="h-3 w-3" />}
+                                    </div>
+
+                                    {/* Templates list */}
+                                    {templates
+                                      .filter((t) => t.name.toLowerCase().includes(groupTemplateSearch.toLowerCase()))
+                                      .map((tpl) => {
+                                        const isSelected = group.templateId === tpl.id;
+                                        return (
+                                          <div
+                                            key={tpl.id}
+                                            onClick={() => {
+                                              handleUpdateGroupTemplate(group.id, tpl.id);
+                                              setActiveGroupDropdownId(null);
+                                            }}
+                                            className={`p-2 text-[12px] rounded-lg cursor-pointer transition-all flex items-center justify-between font-semibold ${
+                                              isSelected
+                                                ? 'bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white font-bold'
+                                                : 'hover:bg-zinc-50 dark:hover:bg-zinc-900/60 text-zinc-700 dark:text-zinc-300'
+                                            }`}
+                                          >
+                                            <span className="truncate pr-3">{tpl.name}</span>
+                                            {isSelected && <Check className="h-3 w-3 text-violet-500" />}
+                                          </div>
+                                        );
+                                      })}
+
+                                    {templates.filter((t) =>
+                                      t.name.toLowerCase().includes(groupTemplateSearch.toLowerCase())
+                                    ).length === 0 && (
+                                      <div className="p-2 text-[11px] text-zinc-400 text-center italic">
+                                        Không tìm thấy mẫu phù hợp
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </>
+                            )}
+                          </div>
+
+                          {/* Delete Button */}
+                          {currentGroups.length > 1 && (
+                            <button
+                              onClick={() => handleRemoveGroup(group.id)}
+                              className="text-[11.5px] font-bold text-red-500 hover:text-red-650 hover:underline cursor-pointer px-1.5 transition-all"
+                              title="Xóa nhóm và chuyển sản phẩm về Nhóm 1"
+                            >
+                              Xóa
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      {isItemActive && <Check className="h-3.5 w-3.5 text-violet-500 shrink-0" />}
+
+                      {/* Group Items */}
+                      <div className="flex flex-col gap-1.5">
+                        {itemsInGroup.map((item) => {
+                          const cleanName = String(item.ten_hang)
+                            .replace(/[\/\\:\*\?"<>\|]/g, '_')
+                            .trim();
+                          const docName = `${cleanName}_STT_${item.stt}.docx`;
+                          const isItemActive = activeItemKey === item.uniqueKey;
+                          const isChecked = selectedItemKeys.includes(item.uniqueKey);
+
+                          return (
+                            <div
+                              key={item.uniqueKey}
+                              onClick={() => setActiveItemKey(item.uniqueKey)}
+                              className={`
+                                w-full px-3 py-2.5 rounded-xl border text-[12.5px] transition-all duration-150 flex items-center justify-between gap-3 cursor-pointer
+                                ${
+                                  isItemActive
+                                    ? 'bg-violet-50/70 border-violet-100 dark:bg-violet-955/20 dark:border-violet-900/50 text-violet-900 dark:text-violet-300 font-semibold shadow-sm'
+                                    : 'bg-white dark:bg-zinc-950 border-zinc-100 dark:border-zinc-900 text-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-900/60 hover:border-zinc-200/80 dark:text-zinc-300'
+                                }
+                              `}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    e.stopPropagation();
+                                    if (e.target.checked) {
+                                      setSelectedItemKeys((prev) => [...prev, item.uniqueKey]);
+                                    } else {
+                                      setSelectedItemKeys((prev) =>
+                                        prev.filter((k) => k !== item.uniqueKey)
+                                      );
+                                    }
+                                  }}
+                                  className="h-4 w-4 rounded text-violet-650 border-zinc-300 dark:border-zinc-700 focus:ring-violet-500 cursor-pointer shrink-0"
+                                />
+                                <span
+                                  className="truncate flex-1 py-0.5 select-none font-semibold text-left"
+                                  title={docName}
+                                >
+                                  {docName}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                {/* Move Dropdown */}
+                                <select
+                                  value={group.id}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val === 'create-new') {
+                                      const nextNum = currentGroups.length + 1;
+                                      const newId = `group-${Date.now()}`;
+                                      const nextGroups = currentGroups.map((g) => ({
+                                        ...g,
+                                        itemKeys: g.itemKeys.filter((k) => k !== item.uniqueKey),
+                                      }));
+                                      updateCompanyGroups(activeCompanyId, [
+                                        ...nextGroups,
+                                        {
+                                          id: newId,
+                                          name: `Nhóm ${nextNum}`,
+                                          templateId: 'custom',
+                                          itemKeys: [item.uniqueKey],
+                                        },
+                                      ]);
+                                    } else {
+                                      handleMoveItem(item.uniqueKey, val);
+                                    }
+                                  }}
+                                  className={`text-[10px] font-bold border-none rounded-full px-2 py-0.5 outline-none cursor-pointer transition-all max-w-[95px] truncate ${
+                                    isItemActive
+                                      ? 'bg-zinc-200/50 hover:bg-zinc-200 text-zinc-655 dark:bg-zinc-800 dark:hover:bg-zinc-755 dark:text-zinc-300'
+                                      : 'bg-zinc-100 hover:bg-zinc-150 text-zinc-500 dark:bg-zinc-900 dark:hover:bg-zinc-850 dark:text-zinc-400'
+                                  }`}
+                                  title="Di chuyển sản phẩm này sang nhóm in khác"
+                                >
+                                  {currentGroups.map((g) => (
+                                    <option key={g.id} value={g.id}>
+                                      ➔ {g.name}
+                                    </option>
+                                  ))}
+                                  <option value="create-new">➕ Nhóm mới</option>
+                                </select>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 })}
+
+                {/* Add Group Button */}
+                <button
+                  type="button"
+                  onClick={handleAddGroup}
+                  className="w-full py-2.5 border border-dashed border-violet-300 dark:border-violet-850 hover:bg-violet-50/50 dark:hover:bg-violet-955/20 text-violet-650 dark:text-violet-400 text-[12.5px] font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm mt-1.5"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Thêm luồng/nhóm in mới
+                </button>
               </div>
             )}
           </div>
-
-          {/* Section C: Product Name Mappings */}
-          <div className="flex flex-col gap-1.5 shrink-0 border-t border-zinc-200 dark:border-zinc-800 pt-3">
-            <h5 className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1">
-              3. Cấu hình Tên sản phẩm theo đầu Mã hàng
-            </h5>
-            
-            {/* Added mapping rules list */}
-            {Object.keys(productNameMappings).length > 0 && (
-              <div className="flex flex-col gap-1 max-h-24 overflow-y-auto mb-2 pr-1">
-                {Object.entries(productNameMappings).map(([prefix, categoryName]) => (
-                  <div key={prefix} className="flex items-center justify-between p-1.5 px-2 bg-zinc-100 dark:bg-zinc-900 rounded-lg text-[10px] font-semibold border border-zinc-200/50 dark:border-zinc-800">
-                    <span className="truncate max-w-[190px]">
-                      <code className="bg-zinc-200 dark:bg-zinc-800 px-1 py-0.5 rounded text-violet-650 dark:text-violet-455 font-mono mr-1.5">{prefix}</code>
-                      {categoryName}
-                    </span>
-                    <button
-                      onClick={() => {
-                        setProductNameMappings(prev => {
-                          const next = { ...prev };
-                          delete next[prefix];
-                          return next;
-                        });
-                      }}
-                      className="text-rose-500 hover:text-rose-600 p-0.5 hover:bg-rose-50 dark:hover:bg-rose-955 rounded transition-all"
-                      title="Xóa cấu hình này"
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Inputs to add new mapping */}
-            <div className="flex flex-col gap-2 bg-zinc-50 dark:bg-zinc-900/50 p-2.5 rounded-xl border border-zinc-150 dark:border-zinc-850">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Mã: VL, SP..."
-                  id="prefixInput"
-                  className="w-1/2 p-1.5 px-2 text-[10.5px] bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-violet-500 font-bold font-mono"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      document.getElementById('addButton')?.click();
-                    }
-                  }}
-                />
-                <input
-                  type="text"
-                  placeholder="Tên: Ống nhựa..."
-                  id="nameInput"
-                  className="w-1/2 p-1.5 px-2 text-[10.5px] bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-violet-500 font-medium"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      document.getElementById('addButton')?.click();
-                    }
-                  }}
-                />
-              </div>
-              <Button
-                id="addButton"
-                size="sm"
-                onClick={() => {
-                  const prefixEl = document.getElementById('prefixInput') as HTMLInputElement;
-                  const nameEl = document.getElementById('nameInput') as HTMLInputElement;
-                  const prefix = prefixEl?.value?.trim();
-                  const name = nameEl?.value?.trim();
-                  if (prefix && name) {
-                    setProductNameMappings(prev => ({
-                      ...prev,
-                      [prefix]: name
-                    }));
-                    prefixEl.value = '';
-                    nameEl.value = '';
-                  }
-                }}
-                className="w-full h-7 text-[10px] font-bold rounded-lg shrink-0"
-              >
-                Thêm Cấu Hình
-              </Button>
-            </div>
-          </div>
-
 
         </div>
 
         {/* Right column: High-fidelity paper-like mockup viewer */}
         <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 shrink-0">
             <h5 className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
               <Eye className="h-3.5 w-3.5 text-violet-500" />
               Xem trước Phiếu được chọn
@@ -791,317 +966,308 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
             </span>
           </div>
 
-          {/* Template override selector */}
-          {currentSection && (
-            <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-3 mb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs relative z-30">
-              <div className="flex flex-col gap-0.5">
-                <span className="font-semibold text-zinc-700 dark:text-zinc-300">Biểu mẫu áp dụng cho hóa đơn này:</span>
-                <span className="text-[10px] text-zinc-450 dark:text-zinc-550">
-                  {templateOverrides[currentSection.id] 
-                    ? "Đã chọn thủ công" 
-                    : "Tự động chọn theo tên công ty"}
-                </span>
+          {/* Compact active template display */}
+          {currentItem && currentSection && currentTemplate && (
+            <div className="bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-2 px-3 mb-2 flex items-center justify-between text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 shrink-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-zinc-400">Đang xem trước:</span>
+                <span className="text-violet-600 dark:text-violet-400 font-bold">{currentTemplate.name}</span>
               </div>
-              
-              {/* Searchable Dropdown */}
-              <div className="relative w-full sm:w-80">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Tìm mẫu in..."
-                    value={isDropdownOpen ? templateSearch : (currentTemplate?.name || "Chọn mẫu in...")}
-                    onFocus={() => setIsDropdownOpen(true)}
-                    onChange={(e) => {
-                      setTemplateSearch(e.target.value);
-                      setIsDropdownOpen(true);
-                    }}
-                    className="w-full text-xs px-3.5 py-2 pr-10 rounded-xl bg-white dark:bg-zinc-950 border border-zinc-200/80 focus:outline-none focus:ring-1 focus:ring-violet-500 dark:border-zinc-850 dark:text-white font-semibold shadow-sm"
-                  />
-                  <div className="absolute right-3 top-2.5 flex items-center gap-1.5">
-                    {templateSearch && (
-                      <button
-                        onClick={() => {
-                          setTemplateSearch('');
-                          setIsDropdownOpen(false);
-                        }}
-                        className="text-zinc-400 hover:text-zinc-650 text-sm cursor-pointer"
-                      >
-                        ×
-                      </button>
-                    )}
-                    <Eye className="h-3.5 w-3.5 text-zinc-450" />
-                  </div>
-                </div>
-
-                {isDropdownOpen && (
-                  <>
-                    {/* Click outside backdrop handler */}
-                    <div 
-                      className="fixed inset-0 z-[999] bg-transparent"
-                      onClick={() => {
-                        setIsDropdownOpen(false);
-                        setTemplateSearch('');
-                      }}
-                    />
-
-                    <div className="absolute left-0 right-0 top-full mt-1.5 bg-white dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xl z-[1000] max-h-56 overflow-y-auto p-1.5 flex flex-col gap-0.5">
-                      <div 
-                        onClick={() => {
-                          setTemplateOverrides(prev => {
-                            const next = { ...prev };
-                            delete next[currentSection.id];
-                            return next;
-                          });
-                          setIsDropdownOpen(false);
-                          setTemplateSearch('');
-                        }}
-                        className="p-2 text-xs rounded-lg cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-955/40 text-violet-650 dark:text-violet-455 font-bold flex items-center justify-between"
-                      >
-                        <span>✨ Tự động nhận diện (Mặc định)</span>
-                        {!templateOverrides[currentSection.id] && <Check className="h-3 w-3" />}
-                      </div>
-                      
-                      {filteredTemplates.map((tpl) => {
-                        const isSelected = templateOverrides[currentSection.id] === tpl.id;
-                        return (
-                          <div
-                            key={tpl.id}
-                            onClick={() => {
-                              setTemplateOverrides(prev => ({
-                                ...prev,
-                                [currentSection.id]: tpl.id
-                              }));
-                              setIsDropdownOpen(false);
-                              setTemplateSearch('');
-                            }}
-                            className={`p-2 text-xs rounded-lg cursor-pointer transition-all flex items-center justify-between font-medium ${
-                              isSelected 
-                                ? 'bg-zinc-100 dark:bg-zinc-900 text-zinc-900 dark:text-white font-bold' 
-                                : 'hover:bg-zinc-50 dark:hover:bg-zinc-900/60 text-zinc-700 dark:text-zinc-300'
-                            }`}
-                          >
-                            <span className="truncate pr-4">{tpl.name}</span>
-                            {isSelected && <Check className="h-3 w-3 text-violet-500" />}
-                          </div>
-                        );
-                      })}
-                      {filteredTemplates.length === 0 && (
-                        <div className="p-2 text-[10.5px] text-zinc-400 text-center italic">
-                          Không tìm thấy mẫu phù hợp
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
+              <span className="text-[10px] text-zinc-400 italic">Áp dụng cho sản phẩm này</span>
             </div>
           )}
 
-          {/* Scrollable A4 Container */}
-          <div className="flex-1 overflow-auto border border-zinc-200 dark:border-zinc-800 bg-zinc-150/40 dark:bg-zinc-900/55 p-3 rounded-2xl flex flex-col items-center justify-start relative">
-            <style>{`
-              .docx-wrapper {
-                background: transparent !important;
-                padding: 0 !important;
-                display: flex !important;
-                flex-direction: column !important;
-                align-items: center !important;
-                width: 100% !important;
-              }
-              .docx {
-                width: 794px !important;
-                min-height: 1123px !important;
-                background: white !important;
-                box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.08) !important;
-                margin: 0 auto 16px auto !important;
-                box-sizing: border-box !important;
-              }
-              .docx_page {
-                margin-bottom: 16px !important;
-              }
-            `}</style>
-            {isProcessing && (
-              <div className="absolute inset-0 bg-white/60 dark:bg-zinc-950/60 backdrop-blur-sm z-30 flex flex-col items-center justify-center gap-3 transition-all duration-300">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20 animate-bounce">
-                  <Sparkles className="h-6 w-6 text-white animate-pulse" />
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-violet-600 animate-bounce [animation-delay:-0.3s]"></div>
-                  <div className="w-2 h-2 rounded-full bg-violet-600 animate-bounce [animation-delay:-0.15s]"></div>
-                  <div className="w-2 h-2 rounded-full bg-violet-600 animate-bounce"></div>
-                </div>
-                <p className="text-xs font-bold text-zinc-800 dark:text-zinc-200 tracking-wide animate-pulse">
-                  HỆ THỐNG ĐANG TẠO VÀ ĐÓNG GÓI VĂN BẢN...
-                </p>
-                <p className="text-[10px] text-zinc-500 font-medium">
-                  Vui lòng không đóng cửa sổ này
-                </p>
-              </div>
-            )}
-            {isCompanySelected && currentItem ? (
-              /* Live Docx Preview or Fallback mockup container */
-              <div className="w-full min-h-[950px] relative">
-                {/* 1. Loader while compiling/rendering */}
-                {isPreviewLoading && (
-                  <div className="absolute inset-0 bg-white/60 dark:bg-zinc-950/60 backdrop-blur-sm z-20 flex flex-col items-center justify-center gap-3 rounded-2xl">
-                    <div className="w-10 h-10 border-4 border-violet-655 border-t-transparent rounded-full animate-spin"></div>
-                    <p className="text-xs font-bold text-zinc-700 dark:text-zinc-300">Đang tải và đồng bộ mẫu xem trước...</p>
+          {/* Side-by-side flex wrapper for A4 Preview and Section 3 */}
+          <div className="flex-1 flex flex-col xl:flex-row gap-4 min-h-0 overflow-hidden">
+            {/* Scrollable A4 Container */}
+            <div className="flex-1 overflow-auto border border-zinc-200 dark:border-zinc-800 bg-zinc-150/40 dark:bg-zinc-900/55 p-3 rounded-2xl flex flex-col items-center justify-start relative">
+              <style>{`
+                .docx-wrapper {
+                  background: transparent !important;
+                  padding: 0 !important;
+                  display: flex !important;
+                  flex-direction: column !important;
+                  align-items: center !important;
+                  width: 100% !important;
+                }
+                .docx {
+                  width: 794px !important;
+                  min-height: 1123px !important;
+                  background: white !important;
+                  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.08) !important;
+                  margin: 0 auto 16px auto !important;
+                  box-sizing: border-box !important;
+                }
+                .docx_page {
+                  margin-bottom: 16px !important;
+                }
+              `}</style>
+              {isProcessing && (
+                <div className="absolute inset-0 bg-white/60 dark:bg-zinc-950/60 backdrop-blur-sm z-30 flex flex-col items-center justify-center gap-3 transition-all duration-300">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20 animate-bounce">
+                    <Sparkles className="h-6 w-6 text-white animate-pulse" />
                   </div>
-                )}
-
-                {/* 2. Error message if compilation fails */}
-                {previewError && (
-                  <div className="bg-red-50 dark:bg-red-955/20 border border-red-200 dark:border-red-900 rounded-2xl p-6 text-center max-w-md my-auto z-10">
-                    <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-2">Không thể hiển thị xem trước biểu mẫu:</p>
-                    <p className="text-[11px] text-zinc-650 dark:text-zinc-400 mb-4">{previewError}</p>
-                    <button 
-                      onClick={() => setPreviewError(null)}
-                      className="text-xs bg-red-100 hover:bg-red-250 text-red-800 dark:bg-red-900 dark:text-red-200 px-3 py-1.5 rounded-xl font-bold cursor-pointer transition-all"
-                    >
-                      Bỏ qua và xem mẫu mô phỏng
-                    </button>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-violet-600 animate-bounce [animation-delay:-0.3s]"></div>
+                    <div className="w-2 h-2 rounded-full bg-violet-600 animate-bounce [animation-delay:-0.15s]"></div>
+                    <div className="w-2 h-2 rounded-full bg-violet-600 animate-bounce"></div>
                   </div>
-                )}
+                  <p className="text-xs font-bold text-zinc-800 dark:text-zinc-200 tracking-wide animate-pulse">
+                    HỆ THỐNG ĐANG TẠO VÀ ĐÓNG GÓI VĂN BẢN...
+                  </p>
+                  <p className="text-[10px] text-zinc-500 font-medium">
+                    Vui lòng không đóng cửa sổ này
+                  </p>
+                </div>
+              )}
+              {isCompanySelected && currentItem ? (
+                /* Live Docx Preview or Fallback mockup container */
+                <div className="w-full min-h-[950px] relative">
+                  {/* 1. Loader while compiling/rendering */}
+                  {isPreviewLoading && (
+                    <div className="absolute inset-0 bg-white/60 dark:bg-zinc-950/60 backdrop-blur-sm z-20 flex flex-col items-center justify-center gap-3 rounded-2xl">
+                      <div className="w-10 h-10 border-4 border-violet-655 border-t-transparent rounded-full animate-spin"></div>
+                      <p className="text-xs font-bold text-zinc-700 dark:text-zinc-300">Đang tải và đồng bộ mẫu xem trước...</p>
+                    </div>
+                  )}
 
-                {/* 3. The actual Word Docx container */}
-                {currentTemplate && renderedBlob && !previewError && (
-                  <div 
-                    ref={docxContainerRef}
-                    className="mx-auto"
-                  />
-                )}
+                  {/* 2. Error message if compilation fails */}
+                  {previewError && (
+                    <div className="bg-red-50 dark:bg-red-955/20 border border-red-200 dark:border-red-900 rounded-2xl p-6 text-center max-w-md my-auto z-10">
+                      <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-2">Không thể hiển thị xem trước biểu mẫu:</p>
+                      <p className="text-[11px] text-zinc-650 dark:text-zinc-400 mb-4">{previewError}</p>
+                      <button 
+                        onClick={() => setPreviewError(null)}
+                        className="text-xs bg-red-100 hover:bg-red-250 text-red-800 dark:bg-red-900 dark:text-red-200 px-3 py-1.5 rounded-xl font-bold cursor-pointer transition-all"
+                      >
+                        Bỏ qua và xem mẫu mô phỏng
+                      </button>
+                    </div>
+                  )}
 
-                {/* 4. Mockup fallback if no custom template or preview failed */}
-                {(!currentTemplate || !renderedBlob || previewError) && (
-                  /* Responsive Paper Sheet Document mockup */
-                  <div className="bg-white text-zinc-950 p-12 border border-zinc-200/50 shadow-lg rounded-sm w-full max-w-[794px] aspect-[1/1.414] min-h-[950px] text-[11px] font-serif leading-relaxed flex flex-col justify-between shrink-0 select-none mx-auto">
-                    
-                    {/* Report Header Logo Section */}
-                    <div>
-                      <div className="flex items-start justify-between border-b border-zinc-950 pb-3 mb-5">
-                        <div className="w-2/3">
-                          <p className="font-bold text-[13px] uppercase tracking-wide">
-                            {currentSection?.companyName || 'CÔNG TY'}
-                          </p>
-                          <p className="text-[9px] text-zinc-650 font-sans italic mt-0.5">
-                            Địa chỉ: Văn phòng đại diện chính hãng
-                          </p>
-                          <p className="text-[9px] text-zinc-650 font-sans italic">
-                            Điện thoại liên hệ: 1900-XXXX
-                          </p>
-                        </div>
-                        <div className="text-right w-1/3 flex flex-col items-end">
-                          <div className="w-10 h-10 border border-zinc-900 flex items-center justify-center font-sans font-bold text-[10px] rounded-lg">
-                            ISO
+                  {/* 3. The actual Word Docx container */}
+                  {currentTemplate && renderedBlob && !previewError && (
+                    <div 
+                      ref={docxContainerRef}
+                      className="mx-auto"
+                    />
+                  )}
+
+                  {/* 4. Mockup fallback if no custom template or preview failed */}
+                  {(!currentTemplate || !renderedBlob || previewError) && (
+                    /* Responsive Paper Sheet Document mockup */
+                    <div className="bg-white text-zinc-950 p-12 border border-zinc-200/50 shadow-lg rounded-sm w-full max-w-[794px] aspect-[1/1.414] min-h-[950px] text-[11px] font-serif leading-relaxed flex flex-col justify-between shrink-0 select-none mx-auto">
+                      
+                      {/* Report Header Logo Section */}
+                      <div>
+                        <div className="flex items-start justify-between border-b border-zinc-950 pb-3 mb-5">
+                          <div className="w-2/3">
+                            <p className="font-bold text-[13px] uppercase tracking-wide">
+                              {currentSection?.companyName || 'CÔNG TY'}
+                            </p>
+                            <p className="text-[9px] text-zinc-650 font-sans italic mt-0.5">
+                              Địa chỉ: Văn phòng đại diện chính hãng
+                            </p>
+                            <p className="text-[9px] text-zinc-650 font-sans italic">
+                              Điện thoại liên hệ: 1900-XXXX
+                            </p>
                           </div>
-                          <span className="text-[8px] text-zinc-500 font-sans mt-1">TCVN ISO 9001:2015</span>
+                          <div className="text-right w-1/3 flex flex-col items-end">
+                            <div className="w-10 h-10 border border-zinc-900 flex items-center justify-center font-sans font-bold text-[10px] rounded-lg">
+                              ISO
+                            </div>
+                            <span className="text-[8px] text-zinc-500 font-sans mt-1">TCVN ISO 9001:2015</span>
+                          </div>
                         </div>
-                      </div>
 
-                      {/* Report Title */}
-                      <div className="text-center mb-6">
-                        <h3 className="text-sm font-bold tracking-wider uppercase">
-                          PHIẾU KIỂM TRA CHẤT LƯỢNG
-                        </h3>
-                        <h4 className="text-[10px] font-bold tracking-wider uppercase font-sans mt-0.5 text-zinc-400">
-                          TEST REPORT
-                        </h4>
-                        <p className="font-bold uppercase mt-2 text-[10.5px]">
-                          Sản phẩm/Product: {currentItem ? getMappedProductName(currentItem.ma_hang, currentItem.ten_hang).toUpperCase() : '---'}
+                        {/* Report Title */}
+                        <div className="text-center mb-6">
+                          <h3 className="text-sm font-bold tracking-wider uppercase">
+                            PHIẾU KIỂM TRA CHẤT LƯỢNG
+                          </h3>
+                          <h4 className="text-[10px] font-bold tracking-wider uppercase font-sans mt-0.5 text-zinc-400">
+                            TEST REPORT
+                          </h4>
+                          <p className="font-bold uppercase mt-2 text-[10.5px]">
+                            Sản phẩm/Product: {currentItem ? getMappedProductName(currentItem.ma_hang, currentItem.ten_hang).toUpperCase() : '---'}
+                          </p>
+                        </div>
+
+                        {/* Reference Details */}
+                        <div className="grid grid-cols-2 gap-y-1.5 border border-zinc-950 p-3 mb-6 bg-zinc-50/50">
+                          <div>
+                            <span className="italic text-zinc-500">Số phiếu / No:</span>{' '}
+                            <span className="font-bold font-sans">
+                              {currentItem && currentSection ? formatSoDocx(currentSection.so_de_nghi, currentItem.hd_xlt_so) : '---'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="italic text-zinc-500">Ngày xuất xưởng / Date:</span>{' '}
+                            <span className="font-bold font-sans">
+                              {currentItem && currentSection ? calculateNgayXuatXuong(currentItem.hd_xlt_ngay, currentSection) : '---'}
+                            </span>
+                          </div>
+                          <div className="col-span-2 border-t border-zinc-200 pt-1.5">
+                            <span className="italic text-zinc-500">Khách hàng / Customer:</span>{' '}
+                            <span className="font-bold uppercase">{currentSection?.ten_khach_hang || '---'}</span>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="italic text-zinc-500">Là nhà cung cấp cho:</span>{' '}
+                            <span className="font-bold uppercase">{currentSection?.nha_cung_cap_cho || '---'}</span>
+                          </div>
+                        </div>
+
+                        {/* Properties table */}
+                        <table className="w-full text-left border-collapse text-[10.5px] border border-zinc-950 mb-6">
+                          <thead>
+                            <tr className="border-b border-zinc-950 bg-zinc-100 font-bold text-center">
+                              <th className="px-2.5 py-2 border-r border-zinc-950 w-8">TT</th>
+                              <th className="px-2.5 py-2 border-r border-zinc-950 w-2/5">Tên sản phẩm / Product Name</th>
+                              <th className="px-2.5 py-2 border-r border-zinc-950 w-20">Mã sản phẩm</th>
+                              <th className="px-2.5 py-2 border-r border-zinc-950 w-16">Số lượng</th>
+                              <th className="px-2.5 py-2 border-r border-zinc-950 w-28">Chỉ tiêu chất lượng</th>
+                              <th className="px-2.5 py-2 w-16">Kết quả</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr className="align-top border-b border-zinc-950">
+                              <td className="px-2.5 py-2.5 border-r border-zinc-950 text-center font-mono">1</td>
+                              <td className="px-2.5 py-2.5 border-r border-zinc-950 font-bold">{currentItem.ten_hang}</td>
+                              <td className="px-2.5 py-2.5 border-r border-zinc-950 text-center font-mono">{currentItem.ma_hang || '---'}</td>
+                              <td className="px-2.5 py-2.5 border-r border-zinc-950 text-center font-semibold">{currentItem.so_luong} {currentItem.dvt}</td>
+                              <td className="px-2.5 py-2.5 border-r border-zinc-950 text-zinc-650">
+                                - Khả năng cách điện<br />
+                                - Độ bền vật lý cơ học<br />
+                                - Tính thẩm mỹ đồng đều
+                              </td>
+                              <td className="px-2.5 py-2.5 text-center font-bold text-emerald-700">ĐẠT</td>
+                            </tr>
+                          </tbody>
+                        </table>
+
+                        <p className="text-[10px] text-zinc-500 italic mb-8">
+                          * Các chỉ tiêu kiểm tra chất lượng trên phù hợp theo các tiêu chuẩn kỹ thuật hiện hành. Đạt điều kiện nhập kho và đưa vào khai thác sử dụng.
                         </p>
                       </div>
 
-                      {/* Reference Details */}
-                      <div className="grid grid-cols-2 gap-y-1.5 border border-zinc-950 p-3 mb-6 bg-zinc-50/50">
-                        <div>
-                          <span className="italic text-zinc-500">Số phiếu / No:</span>{' '}
-                          <span className="font-bold font-sans">
-                            {currentItem && currentSection ? formatSoDocx(currentSection.so_de_nghi, currentItem.hd_xlt_so) : '---'}
-                          </span>
+                      {/* Signatures */}
+                      <div className="flex justify-between text-center mt-auto border-t border-zinc-150 pt-6">
+                        <div className="w-1/3">
+                          <p className="font-bold text-[10px] uppercase">PHỤ TRÁCH Q.C</p>
+                          <p className="text-[9px] text-zinc-400 italic mt-0.5">CHIEF OF Q.C DEPT</p>
+                          <div className="h-16" />
+                          <p className="font-bold uppercase text-[10.5px]">NGUYỄN MẠNH HÙNG</p>
                         </div>
-                        <div>
-                          <span className="italic text-zinc-500">Ngày xuất xưởng / Date:</span>{' '}
-                          <span className="font-bold font-sans">
-                            {currentItem && currentSection ? calculateNgayXuatXuong(currentItem.hd_xlt_ngay, currentSection) : '---'}
-                          </span>
+                        <div className="w-1/3">
+                          <p className="font-bold text-[10px] uppercase">KIỂM TRA VIÊN</p>
+                          <p className="text-[9px] text-zinc-400 italic mt-0.5">INSPECTOR</p>
+                          <div className="h-16" />
+                          <p className="font-bold uppercase text-[10.5px]">{currentSection?.nguoi_de_nghi || 'NGUYỄN THỊ ĐIỆP'}</p>
                         </div>
-                        <div className="col-span-2 border-t border-zinc-200 pt-1.5">
-                          <span className="italic text-zinc-500">Khách hàng / Customer:</span>{' '}
-                          <span className="font-bold uppercase">{currentSection?.ten_khach_hang || '---'}</span>
-                        </div>
-                        <div className="col-span-2">
-                          <span className="italic text-zinc-500">Là nhà cung cấp cho:</span>{' '}
-                          <span className="font-bold uppercase">{currentSection?.nha_cung_cap_cho || '---'}</span>
-                        </div>
-                      </div>
-
-                      {/* Properties table */}
-                      <table className="w-full text-left border-collapse text-[10.5px] border border-zinc-950 mb-6">
-                        <thead>
-                          <tr className="border-b border-zinc-950 bg-zinc-100 font-bold text-center">
-                            <th className="px-2.5 py-2 border-r border-zinc-950 w-8">TT</th>
-                            <th className="px-2.5 py-2 border-r border-zinc-950 w-2/5">Tên sản phẩm / Product Name</th>
-                            <th className="px-2.5 py-2 border-r border-zinc-950 w-20">Mã sản phẩm</th>
-                            <th className="px-2.5 py-2 border-r border-zinc-950 w-16">Số lượng</th>
-                            <th className="px-2.5 py-2 border-r border-zinc-950 w-28">Chỉ tiêu chất lượng</th>
-                            <th className="px-2.5 py-2 w-16">Kết quả</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr className="align-top border-b border-zinc-950">
-                            <td className="px-2.5 py-2.5 border-r border-zinc-950 text-center font-mono">1</td>
-                            <td className="px-2.5 py-2.5 border-r border-zinc-950 font-bold">{currentItem.ten_hang}</td>
-                            <td className="px-2.5 py-2.5 border-r border-zinc-950 text-center font-mono">{currentItem.ma_hang || '---'}</td>
-                            <td className="px-2.5 py-2.5 border-r border-zinc-950 text-center font-semibold">{currentItem.so_luong} {currentItem.dvt}</td>
-                            <td className="px-2.5 py-2.5 border-r border-zinc-950 text-zinc-650">
-                              - Khả năng cách điện<br />
-                              - Độ bền vật lý cơ học<br />
-                              - Tính thẩm mỹ đồng đều
-                            </td>
-                            <td className="px-2.5 py-2.5 text-center font-bold text-emerald-700">ĐẠT</td>
-                          </tr>
-                        </tbody>
-                      </table>
-
-                      <p className="text-[10px] text-zinc-500 italic mb-8">
-                        * Các chỉ tiêu kiểm tra chất lượng trên phù hợp theo các tiêu chuẩn kỹ thuật hiện hành. Đạt điều kiện nhập kho và đưa vào khai thác sử dụng.
-                      </p>
-                    </div>
-
-                    {/* Signatures */}
-                    <div className="flex justify-between text-center mt-auto border-t border-zinc-150 pt-6">
-                      <div className="w-1/3">
-                        <p className="font-bold text-[10px] uppercase">PHỤ TRÁCH Q.C</p>
-                        <p className="text-[9px] text-zinc-400 italic mt-0.5">CHIEF OF Q.C DEPT</p>
-                        <div className="h-16" />
-                        <p className="font-bold uppercase text-[10.5px]">NGUYỄN MẠNH HÙNG</p>
-                      </div>
-                      <div className="w-1/3">
-                        <p className="font-bold text-[10px] uppercase">KIỂM TRA VIÊN</p>
-                        <p className="text-[9px] text-zinc-400 italic mt-0.5">INSPECTOR</p>
-                        <div className="h-16" />
-                        <p className="font-bold uppercase text-[10.5px]">{currentSection?.nguoi_de_nghi || 'NGUYỄN THỊ ĐIỆP'}</p>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center text-center p-8 bg-white/5 border border-dashed border-zinc-300 dark:border-zinc-800 rounded-2xl w-full max-w-[794px] aspect-[1/1.414] text-zinc-400">
+                  <Building2 className="h-10 w-10 text-zinc-350 mb-3" />
+                  <h4 className="text-sm font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                    Công ty này chưa được chọn để xuất bản
+                  </h4>
+                  <p className="text-xs text-zinc-500 max-w-sm">
+                    Vui lòng tích vào ô vuông bên cạnh tên công ty trong danh sách để cho phép hiển thị xem trước và tải về.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Section 3: Cấu hình tên sản phẩm theo đầu mã hàng */}
+            <div className="w-full xl:w-[280px] border border-zinc-200 dark:border-zinc-800 bg-zinc-50/40 dark:bg-zinc-900/10 p-4 rounded-2xl flex flex-col gap-3 shrink-0 overflow-y-auto min-h-0">
+              <h5 className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
+                3. Cấu hình Tên sản phẩm theo đầu Mã hàng
+              </h5>
+              
+              {/* Added mapping rules list */}
+              {Object.keys(productNameMappings).length > 0 && (
+                <div className="flex flex-col gap-1 max-h-48 overflow-y-auto pr-1">
+                  {Object.entries(productNameMappings).map(([prefix, categoryName]) => (
+                    <div key={prefix} className="flex items-center justify-between p-1.5 px-2 bg-white dark:bg-zinc-955 rounded-xl text-[10.5px] font-semibold border border-zinc-150 dark:border-zinc-855 shadow-sm">
+                      <span className="truncate max-w-[170px]" title={`${prefix} -> ${categoryName}`}>
+                        <code className="bg-zinc-100 dark:bg-zinc-900 px-1 py-0.5 rounded text-violet-655 dark:text-violet-400 font-mono mr-1.5">{prefix}</code>
+                        {categoryName}
+                      </span>
+                      <button
+                        onClick={() => {
+                          setProductNameMappings(prev => {
+                            const next = { ...prev };
+                            delete next[prefix];
+                            return next;
+                          });
+                        }}
+                        className="text-rose-500 hover:text-rose-600 p-0.5 hover:bg-rose-50 dark:hover:bg-rose-955 rounded transition-all cursor-pointer font-bold"
+                        title="Xóa cấu hình này"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Inputs to add new mapping */}
+              <div className="flex flex-col gap-2.5 bg-white dark:bg-zinc-950 p-3 rounded-xl border border-zinc-150 dark:border-zinc-850 shadow-sm mt-auto">
+                <div className="flex flex-col gap-2">
+                  <input
+                    type="text"
+                    placeholder="Mã đầu: VL, SP..."
+                    id="prefixInput"
+                    className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-violet-500 font-bold font-mono"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        document.getElementById('addButton')?.click();
+                      }
+                    }}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Tên mới: Ống nhựa..."
+                    id="nameInput"
+                    className="w-full p-2 text-xs bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-1 focus:ring-violet-500 font-medium"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        document.getElementById('addButton')?.click();
+                      }
+                    }}
+                  />
+                </div>
+                <Button
+                  id="addButton"
+                  size="sm"
+                  onClick={() => {
+                    const prefixEl = document.getElementById('prefixInput') as HTMLInputElement;
+                    const nameEl = document.getElementById('nameInput') as HTMLInputElement;
+                    const prefix = prefixEl?.value?.trim();
+                    const name = nameEl?.value?.trim();
+                    if (prefix && name) {
+                      setProductNameMappings(prev => ({
+                        ...prev,
+                        [prefix]: name
+                      }));
+                      prefixEl.value = '';
+                      nameEl.value = '';
+                    }
+                  }}
+                  className="w-full h-8 text-[11px] font-bold rounded-lg shrink-0 mt-1"
+                >
+                  Thêm Cấu Hình
+                </Button>
               </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center text-center p-8 bg-white/5 border border-dashed border-zinc-300 dark:border-zinc-800 rounded-2xl w-full max-w-[794px] aspect-[1/1.414] text-zinc-400">
-                <Building2 className="h-10 w-10 text-zinc-350 mb-3" />
-                <h4 className="text-sm font-bold text-zinc-700 dark:text-zinc-300 mb-1">
-                  Công ty này chưa được chọn để xuất bản
-                </h4>
-                <p className="text-xs text-zinc-500 max-w-sm">
-                  Vui lòng tích vào ô vuông bên cạnh tên công ty trong danh sách để cho phép hiển thị xem trước và tải về.
-                </p>
-              </div>
-            )}
+            </div>
           </div>
 
           {/* Action buttons footer */}
           {(() => {
-            const activeCompanyHasTemplate = currentCompany ? currentCompany.allSections.every(sec => getTemplateForSection(sec) !== null) : false;
+            const activeCompanyHasTemplate = currentCompany ? companyItems.every(item => getTemplateForItem(item, item.section) !== null) : false;
             const activeCompanySelectedItems = companyItems
               .filter(item => selectedItemKeys.includes(item.uniqueKey))
               .map(item => {
