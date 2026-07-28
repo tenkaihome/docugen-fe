@@ -123,19 +123,14 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
   // Get all companies with items (only those that have selected sections)
   const activeSections = sections.filter((s) => selectedSections.includes(s.id) && s.rowCount > 0);
 
-  const allCompanies = Array.from(
-    new Set(activeSections.map((s) => s.companyId))
-  ).map((cId) => {
-    const allCompanySecs = sections.filter((s) => s.companyId === cId);
-    const companySecs = allCompanySecs.filter((s) => selectedSections.includes(s.id));
-    const companyName = allCompanySecs[0]?.companyName || 'Công ty';
-    const totalItems = companySecs.reduce((sum, s) => sum + s.rowCount, 0);
+  const allCompanies = activeSections.map((s) => {
+    const companyName = `${s.companyName} (Số đề nghị: ${s.so_de_nghi})`;
     return {
-      companyId: cId,
+      companyId: s.id, // Using section ID as companyId to keep each invoice separate
       companyName,
-      sections: companySecs,
-      allSections: allCompanySecs,
-      totalItems,
+      sections: [s],
+      allSections: [s],
+      totalItems: s.rowCount,
     };
   });
 
@@ -638,8 +633,8 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
                         `}
                         title={hasTemplate ? "Bật/Tắt xuất công ty này" : "Thiếu file mẫu Word cho công ty này"}
                       />
-                      <div className="flex flex-col min-w-0 items-start">
-                        <span className="truncate font-semibold text-left select-none max-w-[130px] leading-tight">
+                      <div className="flex flex-col min-w-0 items-start flex-1">
+                        <span className="truncate font-semibold text-left select-none max-w-[280px] leading-tight" title={company.companyName}>
                           {company.companyName}
                         </span>
                         {!hasTemplate && (

@@ -199,7 +199,7 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
   const getTemplateForItem = useCallback((item: any, section: ExcelSection): EnterpriseTemplate | null => {
     if (!item) return null;
     const itemKey = item.uniqueKey || `${section.id}-stt-${item.stt}-idx-${item.index}`;
-    const companyId = section.companyId;
+    const companyId = section.id;
     const groups = exportGroups[companyId];
     
     if (groups && groups.length > 0) {
@@ -261,7 +261,7 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
       const itemsToUse = customItems || section.items;
       if (itemsToUse.length === 0) return;
 
-      const companyId = section.companyId;
+      const companyId = section.id;
       const groups = getGroupsForCompany(companyId, section.items, section);
       const tasks: { templateId: string; items: ExcelItem[]; section: ExcelSection }[] = [];
 
@@ -319,80 +319,55 @@ export const useDocxGenerator = (sections: ExcelSection[], selectedSections: str
     setProcessState('GENERATING');
 
     try {
-      // Group sections by companyId to create separate merged files
-      const groupedSections: { [companyId: string]: ExcelSection[] } = {};
-      for (const section of activeSections) {
-        if (!groupedSections[section.companyId]) {
-          groupedSections[section.companyId] = [];
-        }
-        groupedSections[section.companyId].push(section);
-      }
-
-      const companyIds = Object.keys(groupedSections);
       const outputZip = new PizZip();
       let generatedFileCount = 0;
       let lastFileBlob: Blob | null = null;
       let lastDocName = '';
 
-      for (const companyId of companyIds) {
-        const companySecs = groupedSections[companyId];
-        const representativeSec = companySecs[0];
+      for (const section of activeSections) {
+        const sectionItems = section.items.map(item => ({
+          ...item,
+          uniqueKey: `${section.id}-stt-${item.stt}-idx-${item.index}`
+        }));
 
-        const allCompanyItems: any[] = [];
-        for (const sec of companySecs) {
-          allCompanyItems.push(...sec.items.map(item => ({
-            ...item,
-            uniqueKey: `${sec.id}-stt-${item.stt}-idx-${item.index}`
-          })));
-        }
-
-        const groups = getGroupsForCompany(companyId, allCompanyItems, representativeSec);
+        const groups = getGroupsForCompany(section.id, sectionItems, section);
         const tasks: { templateId: string; items: ExcelItem[]; section: ExcelSection }[] = [];
 
-        for (const section of companySecs) {
-          const itemsToUse = filterItemKeys
-            ? section.items.filter(item => 
-                filterItemKeys.includes(`${section.id}-stt-${item.stt}-idx-${item.index}`)
-              )
-            : section.items;
+        const itemsToUse = filterItemKeys
+          ? sectionItems.filter(item => filterItemKeys.includes(item.uniqueKey))
+          : sectionItems;
 
-          if (itemsToUse.length === 0) continue;
+        if (itemsToUse.length === 0) continue;
 
-          for (const group of groups) {
-            const itemsInGroup = itemsToUse.filter(item => {
-              const itemKey = `${section.id}-stt-${item.stt}-idx-${item.index}`;
-              return group.itemKeys.includes(itemKey);
-            });
+        for (const group of groups) {
+          const itemsInGroup = itemsToUse.filter(item => group.itemKeys.includes(item.uniqueKey));
+          if (itemsInGroup.length === 0) continue;
 
-            if (itemsInGroup.length === 0) continue;
-
-            let resolvedTemplateId = group.templateId;
-            if (resolvedTemplateId === 'custom') {
-              const autoTpl = getTemplateForSection(section);
-              resolvedTemplateId = autoTpl?.id || '';
-            }
-
-            if (!resolvedTemplateId) {
-              alert(`Không tìm thấy mẫu in phù hợp cho nhóm "${group.name}".`);
-              setIsProcessing(false);
-              setProcessState('ERROR');
-              return;
-            }
-
-            tasks.push({
-              templateId: resolvedTemplateId,
-              items: itemsInGroup,
-              section: section
-            });
+          let resolvedTemplateId = group.templateId;
+          if (resolvedTemplateId === 'custom') {
+            const autoTpl = getTemplateForSection(section);
+            resolvedTemplateId = autoTpl?.id || '';
           }
+
+          if (!resolvedTemplateId) {
+            alert(`Không tìm thấy mẫu in phù hợp cho nhóm "${group.name}".`);
+            setIsProcessing(false);
+            setProcessState('ERROR');
+            return;
+          }
+
+          tasks.push({
+            templateId: resolvedTemplateId,
+            items: itemsInGroup,
+            section: section
+          });
         }
 
         if (tasks.length === 0) continue;
 
         // Generate the combined merged DOCX document on the server
         const mergedBlob = await apiClient.generateMultipleOnServer(tasks, productNameMappings);
-        const safeCompanyName = normalizeString(representativeSec.companyName).toUpperCase();
-        const docName = `DocuGen_${safeCompanyName}.docx`;
+        const docName = `BaoCao_${section.companyId}_So_${section.so_de_nghi.replace(/[\/\\:]/g, '_')}.docx`;
 
         outputZip.file(docName, await mergedBlob.arrayBuffer());
         generatedFileCount++;
