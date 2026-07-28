@@ -898,7 +898,7 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
           )}
 
           {/* Scrollable A4 Container */}
-          <div className="flex-1 overflow-auto border border-zinc-200 dark:border-zinc-800 bg-zinc-150/40 dark:bg-zinc-900/55 p-3 rounded-2xl relative">
+          <div className="flex-1 overflow-auto border border-zinc-200 dark:border-zinc-800 bg-zinc-150/40 dark:bg-zinc-900/55 p-3 rounded-2xl flex flex-col items-center justify-start relative">
             <style>{`
               .docx-wrapper {
                 background: transparent !important;
@@ -909,8 +909,12 @@ export const VisualPreviewModal: React.FC<VisualPreviewModalProps> = ({
                 width: 100% !important;
               }
               .docx {
+                width: 794px !important;
+                min-height: 1123px !important;
+                background: white !important;
                 box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.08) !important;
                 margin: 0 auto 16px auto !important;
+                box-sizing: border-box !important;
               }
               .docx_page {
                 margin-bottom: 16px !important;
